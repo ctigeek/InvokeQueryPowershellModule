@@ -64,17 +64,33 @@ namespace InvokeQuery
 
         protected override void BeginProcessing()
         {
+            SetDefaultServerProperty();
             ProviderFactory = DbProviderFactories.GetFactory(ProviderInvariantName);
             WriteVerbose("Opening connection...");
-            Connection = ProviderFactory.CreateConnection();
-            if (Connection == null)
+            Connection = GetDbConnection();
+            Connection.Open();
+            WriteVerbose("Connection to database is open.");
+        }
+
+        protected virtual void SetDefaultServerProperty()
+        {
+            if (string.IsNullOrEmpty(Server))
+            {
+                Server = "localhost";
+                WriteVerbose("Server set to " + Server);
+            }
+        }
+
+        protected virtual DbConnection GetDbConnection()
+        {
+            var connection = ProviderFactory.CreateConnection();
+            if (connection == null)
             {
                 throw new ArgumentException("Unable to create a Db Provider Factory from provider string `" + ProviderInvariantName + "`.");
             }
-            Connection.ConnectionString = CreateConnectionString();
-            WriteVerbose("Using the following connection string: " + Connection.ConnectionString);
-            Connection.Open();
-            WriteVerbose("Connection to database is open.");
+            connection.ConnectionString = CreateConnectionString();
+            WriteVerbose("Using the following connection string: " + connection.ConnectionString);
+            return connection;
         }
 
         protected override void ProcessRecord()
@@ -107,6 +123,18 @@ namespace InvokeQuery
                 StopProcessing();
                 throw;
             }
+        }
+
+        protected virtual DbCommand GetDbCommand()
+        {
+            var command = ProviderFactory.CreateCommand();
+            command.Connection = Connection;
+            command.CommandText = Query;
+            if (StoredProcedure)
+            {
+                command.CommandType = CommandType.StoredProcedure;
+            }
+            return command;
         }
 
         private void RunQuery()
@@ -158,23 +186,12 @@ namespace InvokeQuery
             WriteObject(result);
         }
 
-        private DbCommand GetDbCommand()
-        {
-            var command = ProviderFactory.CreateCommand();
-            command.Connection = Connection;
-            command.CommandText = Query;
-            if (StoredProcedure)
-            {
-                command.CommandType = CommandType.StoredProcedure;
-            }
-            return command;
-        }
-
         private IDisposable GetTransacitonScope()
         {
             IDisposable transactionScope = NullDisposable.Instance;
             if (TransactionAvailable())
             {
+                WriteVerbose("Running query in transaction...");
                 transactionScope = CurrentPSTransaction;
             }
             return transactionScope;
@@ -212,7 +229,7 @@ namespace InvokeQuery
             }
         }
 
-        private string CreateConnectionString()
+        protected virtual string CreateConnectionString()
         {
             if (!string.IsNullOrEmpty(ConnectionString)) return ConnectionString;
 
@@ -228,7 +245,7 @@ namespace InvokeQuery
             }
             if (Credential != PSCredential.Empty)
             {
-                connString.AppendFormat("User ID={0};Password={1};", Credential.UserName, Credential.Password);
+                connString.AppendFormat("User ID={0};Password={1};", Credential.UserName, Credential.Password.ConvertToUnsecureString());
             }
             else
             {

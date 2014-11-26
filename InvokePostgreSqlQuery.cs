@@ -10,6 +10,5 @@ namespace InvokeQuery
         {
             ProviderInvariantName = NpgsqlDataProvider;
         }
-        public sealed override string ProviderInvariantName { get; set; }
     }
 }

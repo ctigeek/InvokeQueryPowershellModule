@@ -10,6 +10,5 @@ namespace InvokeQuery
         {
             ProviderInvariantName = MySqlProvider;
         }
-        public sealed override string ProviderInvariantName { get; set; }
     }
 }

@@ -13,7 +13,7 @@ namespace InvokeQuery
             ProviderInvariantName = SqlServerProvider;
         }
 
-        protected override void BeginProcessing()
+        protected override void SetDefaultServerProperty()
         {
             if (string.IsNullOrEmpty(Server))
             {
@@ -32,7 +32,6 @@ namespace InvokeQuery
                 }
                 WriteVerbose("Server set to " + Server);
             }
-            base.BeginProcessing();
         }
 
         private string FindLocalSqlInstance()
