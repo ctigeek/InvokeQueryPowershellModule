@@ -2,6 +2,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Management.Automation;
+using System.Text;
 
 namespace InvokeQuery
 {
@@ -9,47 +10,52 @@ namespace InvokeQuery
     {
         protected InvokeQueryBase()
         {
-            Server = "localhost";
-            ConnectionTimeout = 30;
+            ConnectionTimeout = -1;
             CommandTimeout = 60;
             Credential = PSCredential.Empty;
             QueryNumber = 0;
-            ProgressRecord = new ProgressRecord(1, "Running Queries...", "");
+            ProgressRecord = new ProgressRecord(1, "Running Queries...", "Running...");
             ProgressRecord.RecordType = ProgressRecordType.Processing;
         }
 
         [Parameter(Mandatory = true, ValueFromPipeline = true)]
-        public virtual string Query { get; set; }
+        public string Query { get; set; }
 
         [Parameter]
-        public virtual PSCredential Credential { get; set; }
+        public PSCredential Credential { get; set; }
 
         [Parameter]
-        public virtual int CommandTimeout { get; set; }
+        public int CommandTimeout { get; set; }
 
         [Parameter]
-        public virtual int ConnectionTimeout { get; set; }
+        public int ConnectionTimeout { get; set; }
 
         [Parameter]
-        public virtual SwitchParameter Scalar { get; set; }
+        public SwitchParameter Scalar { get; set; }
 
         [Parameter]
-        public virtual SwitchParameter NonQuery { get; set; }
+        public SwitchParameter NonQuery { get; set; }
 
         [Parameter]
-        public virtual SwitchParameter UseTransaction { get; set; }
+        public SwitchParameter UseTransaction { get; set; }
 
         [Parameter]
-        public virtual string Database { get; set; }
+        public SwitchParameter StoredProcedure { get; set; }
 
         [Parameter]
-        public virtual string Server { get; set; }
+        public string Database { get; set; }
 
         [Parameter]
-        public virtual string ConnectionString { get; set; }
+        public string Server { get; set; }
 
         [Parameter]
-        public virtual string ProviderInvariantName { get; set; }
+        public string Port { get; set; }
+
+        [Parameter]
+        public string ConnectionString { get; set; }
+
+        [Parameter]
+        public string ProviderInvariantName { get; set; }
 
         protected DbProviderFactory ProviderFactory { get; set; }
         protected DbConnection Connection { get; private set; }
@@ -66,7 +72,9 @@ namespace InvokeQuery
                 throw new ArgumentException("Unable to create a Db Provider Factory from provider string `" + ProviderInvariantName + "`.");
             }
             Connection.ConnectionString = CreateConnectionString();
+            WriteVerbose("Using the following connection string: " + Connection.ConnectionString);
             Connection.Open();
+            WriteVerbose("Connection to database is open.");
         }
 
         protected override void ProcessRecord()
@@ -76,6 +84,7 @@ namespace InvokeQuery
                 QueryNumber++;
                 ProgressRecord.CurrentOperation = "Running query number " + QueryNumber.ToString();
                 WriteProgress(ProgressRecord);
+                WriteVerbose("Running query number " + QueryNumber.ToString());
 
                 using (GetTransacitonScope())
                 {
@@ -102,15 +111,15 @@ namespace InvokeQuery
 
         private void RunQuery()
         {
-            WriteDebug("Running query....");
-            var command = getDbCommand();
+            var command = GetDbCommand();
             var dataTable = new DataTable();
             var adapter = ProviderFactory.CreateDataAdapter();
-            adapter.InsertCommand = command;
+            adapter.SelectCommand = command;
             using (adapter)
             {
                 adapter.Fill(dataTable);
             }
+            WriteVerbose("Query returned " + dataTable.Rows.Count + " rows.");
             WriteObject(GetDataRowArrayFromTable(dataTable));
         }
 
@@ -127,7 +136,7 @@ namespace InvokeQuery
         private void RunNonQuery()
         {
             WriteVerbose("Running NonQuery query...");
-            var command = getDbCommand();
+            var command = GetDbCommand();
             var result = command.ExecuteNonQuery();
             WriteVerbose("NonQuery query complete. " + result + " rows affected.");
             WriteObject(result);
@@ -136,17 +145,28 @@ namespace InvokeQuery
         private void RunScalarQuery()
         {
             WriteVerbose("Running scalar query...");
-            var command = getDbCommand();
+            var command = GetDbCommand();
             var result = command.ExecuteScalar();
-            WriteVerbose("Query complete. Retrieved scalar result:" + result.ToString());
+            if (result != null)
+            {
+                WriteVerbose("Query complete. Retrieved scalar result:" + result.ToString());
+            }
+            else
+            {
+                WriteVerbose("Query complete. Nothing was returned.");
+            }
             WriteObject(result);
         }
 
-        private DbCommand getDbCommand()
+        private DbCommand GetDbCommand()
         {
             var command = ProviderFactory.CreateCommand();
             command.Connection = Connection;
             command.CommandText = Query;
+            if (StoredProcedure)
+            {
+                command.CommandType = CommandType.StoredProcedure;
+            }
             return command;
         }
 
@@ -162,17 +182,18 @@ namespace InvokeQuery
 
         protected override void EndProcessing()
         {
-            ProgressRecord.RecordType = ProgressRecordType.Completed;
-            ProgressRecord.CurrentOperation = "Completing Transaction...";
-            WriteProgress(ProgressRecord);
-            CloseConnection();
+            StopProcessing();
         }
 
         protected override void StopProcessing()
         {
-            ProgressRecord.RecordType = ProgressRecordType.Completed;
-            ProgressRecord.CurrentOperation = "Stopping...";
-            WriteProgress(ProgressRecord);
+            if (ProgressRecord.RecordType != ProgressRecordType.Completed)
+            {
+                ProgressRecord.RecordType = ProgressRecordType.Completed;
+                ProgressRecord.CurrentOperation = "Closing connection...";
+                WriteProgress(ProgressRecord);
+                WriteVerbose("Closing connection...");
+            }
             CloseConnection();
         }
 
@@ -195,9 +216,29 @@ namespace InvokeQuery
         {
             if (!string.IsNullOrEmpty(ConnectionString)) return ConnectionString;
 
-            var formatString = "Data Source={0};Initial Catalog={1};User ID={2};Password={3};Connection Timeout={4}";
-            var connectionString = string.Format(formatString, Server, Database, Credential.UserName, Credential.Password, ConnectionTimeout );
-            return connectionString;
+            var connString = new StringBuilder();
+            connString.AppendFormat("Data Source={0};", Server);
+            if (!string.IsNullOrEmpty(Database))
+            {
+                connString.AppendFormat("Initial Catalog={0};", Database);
+            }
+            if (!string.IsNullOrEmpty(Port))
+            {
+                connString.AppendFormat("Port={0};", Port);
+            }
+            if (Credential != PSCredential.Empty)
+            {
+                connString.AppendFormat("User ID={0};Password={1};", Credential.UserName, Credential.Password);
+            }
+            else
+            {
+                connString.Append("Integrated Security=SSPI;");
+            }
+            if (ConnectionTimeout > 0)
+            {
+                connString.AppendFormat("Connection Timeout={0};", ConnectionTimeout);
+            }
+            return connString.ToString();
         }
     }
 }
