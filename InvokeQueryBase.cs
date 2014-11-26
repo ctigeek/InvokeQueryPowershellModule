@@ -1,8 +1,6 @@
 ﻿using System;
-using System.CodeDom;
-using System.Collections.Generic;
+using System.Data;
 using System.Data.Common;
-using System.Dynamic;
 using System.Management.Automation;
 
 namespace InvokeQuery
@@ -16,55 +14,59 @@ namespace InvokeQuery
             CommandTimeout = 60;
             Credential = PSCredential.Empty;
             QueryNumber = 0;
-            progressRecord = new ProgressRecord(1, "Running Queries...", "");
-            progressRecord.RecordType = ProgressRecordType.Processing;
+            ProgressRecord = new ProgressRecord(1, "Running Queries...", "");
+            ProgressRecord.RecordType = ProgressRecordType.Processing;
         }
 
         [Parameter(Mandatory = true, ValueFromPipeline = true)]
-        public string Query { get; set; }
+        public virtual string Query { get; set; }
 
         [Parameter]
-        public PSCredential Credential { get; set; }
+        public virtual PSCredential Credential { get; set; }
 
         [Parameter]
-        public int CommandTimeout { get; set; }
+        public virtual int CommandTimeout { get; set; }
 
         [Parameter]
-        public int ConnectionTimeout { get; set; }
+        public virtual int ConnectionTimeout { get; set; }
 
         [Parameter]
-        public SwitchParameter Scalar { get; set; }
+        public virtual SwitchParameter Scalar { get; set; }
 
         [Parameter]
-        public SwitchParameter NonQuery { get; set; }
+        public virtual SwitchParameter NonQuery { get; set; }
 
         [Parameter]
-        public SwitchParameter UseTransaction { get; set; }
+        public virtual SwitchParameter UseTransaction { get; set; }
 
         [Parameter]
-        public string Database { get; set; }
+        public virtual string Database { get; set; }
 
         [Parameter]
-        public string Server { get; set; }
+        public virtual string Server { get; set; }
 
+        [Parameter]
+        public virtual string ConnectionString { get; set; }
+
+        [Parameter]
+        public virtual string ProviderInvariantName { get; set; }
+
+        protected DbProviderFactory ProviderFactory { get; set; }
         protected DbConnection Connection { get; private set; }
-        protected DbTransaction Transaction { get; private set; }
         protected int QueryNumber { get; set; }
-        private ProgressRecord progressRecord;
-
-        protected abstract DbConnection CreateConnection(string connectionString);
-        protected abstract DbCommand CreateCommand(string sql, DbConnection connection);
+        protected ProgressRecord ProgressRecord { get; private set; }
 
         protected override void BeginProcessing()
         {
+            ProviderFactory = DbProviderFactories.GetFactory(ProviderInvariantName);
             WriteVerbose("Opening connection...");
-            Connection = CreateConnection(CreateConnectionString());
-            Connection.Open();
-            if (UseTransaction)
+            Connection = ProviderFactory.CreateConnection();
+            if (Connection == null)
             {
-                WriteVerbose("Creating Transaction...");
-                Transaction = Connection.BeginTransaction();
+                throw new ArgumentException("Unable to create a Db Provider Factory from provider string `" + ProviderInvariantName + "`.");
             }
+            Connection.ConnectionString = CreateConnectionString();
+            Connection.Open();
         }
 
         protected override void ProcessRecord()
@@ -72,45 +74,22 @@ namespace InvokeQuery
             try
             {
                 QueryNumber++;
-                progressRecord.CurrentOperation = "Running query number " + QueryNumber.ToString();
-                WriteProgress(progressRecord);
+                ProgressRecord.CurrentOperation = "Running query number " + QueryNumber.ToString();
+                WriteProgress(ProgressRecord);
 
-                var command = CreateCommand(Query, Connection);
-                if (Scalar)
+                using (GetTransacitonScope())
                 {
-                    WriteVerbose("Running scalar query...");
-                    var result = command.ExecuteScalar();
-                    WriteVerbose("Query complete. Retrieved scalar result:" + result.ToString());
-                    WriteObject(result);
-                }
-                else if (NonQuery)
-                {
-                    WriteVerbose("Running NonQuery query...");
-                    var result = command.ExecuteNonQuery();
-                    WriteVerbose("NonQuery query complete. " + result + " rows affected.");
-                    WriteObject(result);
-                }
-                else
-                {
-                    WriteDebug("Running query....");
-                    using (var reader = command.ExecuteReader())
+                    if (Scalar)
                     {
-                        if (reader.HasRows)
-                        {
-                            while (reader.Read())
-                            {
-                                dynamic result = new ExpandoObject() as IDictionary<string, Object>;
-                                for (int i = 0; i < reader.FieldCount; i++)
-                                {
-                                    result.Add(reader.GetName(i), reader[i]);
-                                }
-                                WriteObject(result);
-                            }
-                        }
-                        else
-                        {
-                            WriteObject(null);
-                        }
+                        RunScalarQuery();
+                    }
+                    else if (NonQuery)
+                    {
+                        RunNonQuery();
+                    }
+                    else
+                    {
+                        RunQuery();
                     }
                 }
             }
@@ -121,23 +100,79 @@ namespace InvokeQuery
             }
         }
 
+        private void RunQuery()
+        {
+            WriteDebug("Running query....");
+            var command = getDbCommand();
+            var dataTable = new DataTable();
+            var adapter = ProviderFactory.CreateDataAdapter();
+            adapter.InsertCommand = command;
+            using (adapter)
+            {
+                adapter.Fill(dataTable);
+            }
+            WriteObject(GetDataRowArrayFromTable(dataTable));
+        }
+
+        private DataRow[] GetDataRowArrayFromTable(DataTable dataTable)
+        {
+            var resultSet = new DataRow[dataTable.Rows.Count];
+            for (int i = 0; i < dataTable.Rows.Count; i++)
+            {
+                resultSet[i] = dataTable.Rows[i];
+            }
+            return resultSet;
+        }
+
+        private void RunNonQuery()
+        {
+            WriteVerbose("Running NonQuery query...");
+            var command = getDbCommand();
+            var result = command.ExecuteNonQuery();
+            WriteVerbose("NonQuery query complete. " + result + " rows affected.");
+            WriteObject(result);
+        }
+
+        private void RunScalarQuery()
+        {
+            WriteVerbose("Running scalar query...");
+            var command = getDbCommand();
+            var result = command.ExecuteScalar();
+            WriteVerbose("Query complete. Retrieved scalar result:" + result.ToString());
+            WriteObject(result);
+        }
+
+        private DbCommand getDbCommand()
+        {
+            var command = ProviderFactory.CreateCommand();
+            command.Connection = Connection;
+            command.CommandText = Query;
+            return command;
+        }
+
+        private IDisposable GetTransacitonScope()
+        {
+            IDisposable transactionScope = NullDisposable.Instance;
+            if (TransactionAvailable())
+            {
+                transactionScope = CurrentPSTransaction;
+            }
+            return transactionScope;
+        }
+
         protected override void EndProcessing()
         {
-            progressRecord.RecordType = ProgressRecordType.Completed;
-            progressRecord.CurrentOperation = "Committing Transaction...";
-            WriteProgress(progressRecord);
-
-            CommitTransaction();
+            ProgressRecord.RecordType = ProgressRecordType.Completed;
+            ProgressRecord.CurrentOperation = "Completing Transaction...";
+            WriteProgress(ProgressRecord);
             CloseConnection();
         }
 
         protected override void StopProcessing()
         {
-            progressRecord.RecordType = ProgressRecordType.Completed;
-            progressRecord.CurrentOperation = "Stopping...  Rolling back Transaction...";
-            WriteProgress(progressRecord);
-
-            RollbackTransaction();
+            ProgressRecord.RecordType = ProgressRecordType.Completed;
+            ProgressRecord.CurrentOperation = "Stopping...";
+            WriteProgress(ProgressRecord);
             CloseConnection();
         }
 
@@ -156,30 +191,10 @@ namespace InvokeQuery
             }
         }
 
-        private void RollbackTransaction()
-        {
-            if (Transaction != null)
-            {
-                WriteVerbose("Rolling back transaction...");
-                Transaction.Rollback();
-                Transaction.Dispose();
-                Transaction = null;
-            }
-        }
-
-        private void CommitTransaction()
-        {
-            if (Transaction != null)
-            {
-                WriteVerbose("Committing transaction...");
-                Transaction.Commit();
-                Transaction.Dispose();
-                Transaction = null;
-            }
-        }
-
         private string CreateConnectionString()
         {
+            if (!string.IsNullOrEmpty(ConnectionString)) return ConnectionString;
+
             var formatString = "Data Source={0};Initial Catalog={1};User ID={2};Password={3};Connection Timeout={4}";
             var connectionString = string.Format(formatString, Server, Database, Credential.UserName, Credential.Password, ConnectionTimeout );
             return connectionString;

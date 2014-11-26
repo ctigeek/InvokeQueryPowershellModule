@@ -1,22 +1,15 @@
-﻿using System;
-using System.Data;
-using System.Data.Common;
-using System.Management.Automation;
-using MySql.Data.MySqlClient;
+﻿using System.Management.Automation;
 
 namespace InvokeQuery
 {
     [Cmdlet("Invoke","MySqlQuery")]
     public  class InvokeMySqlQuery : InvokeQueryBase
     {
-        protected override DbConnection CreateConnection(string connectionString)
+        private const string MySqlProvider = "MySql.Data.MySqlClient";
+        public InvokeMySqlQuery()
         {
-            return new MySqlConnection(connectionString);
+            ProviderInvariantName = MySqlProvider;
         }
-
-        protected override DbCommand CreateCommand(string sql, DbConnection connection)
-        {
-            return new MySqlCommand(sql, (MySqlConnection) connection);
-        }
+        public sealed override string ProviderInvariantName { get; set; }
     }
 }

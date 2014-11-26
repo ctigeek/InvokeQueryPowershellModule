@@ -1,21 +1,15 @@
-﻿using System;
-using System.Data.Common;
-using System.Management.Automation;
-using Npgsql;
+﻿using System.Management.Automation;
 
 namespace InvokeQuery
 {
     [Cmdlet("Invoke", "PostgreSqlQuery")]
     public class InvokePostgreSqlQuery : InvokeQueryBase
     {
-        protected override DbConnection CreateConnection(string connectionString)
+        private const string NpgsqlDataProvider = "Npgsql.NpgsqlClient";
+        public InvokePostgreSqlQuery()
         {
-            return new NpgsqlConnection(connectionString);
+            ProviderInvariantName = NpgsqlDataProvider;
         }
-
-        protected override DbCommand CreateCommand(string sql, DbConnection connection)
-        {
-            return new NpgsqlCommand(sql, (NpgsqlConnection)connection);
-        }
+        public sealed override string ProviderInvariantName { get; set; }
     }
 }

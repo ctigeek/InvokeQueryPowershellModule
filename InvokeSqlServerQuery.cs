@@ -1,21 +1,16 @@
-﻿using System;
-using System.Data.Common;
-using System.Data.SqlClient;
-using System.Management.Automation;
+﻿using System.Management.Automation;
 
 namespace InvokeQuery
 {
     [Cmdlet("Invoke","SqlServerQuery")]
     public class InvokeSqlServerQuery : InvokeQueryBase
     {
-        protected override DbConnection CreateConnection(string connectionString)
+        private const string SqlServerProvider = "System.Data.SqlClient";
+        public InvokeSqlServerQuery()
         {
-            return new SqlConnection(connectionString);
+            ProviderInvariantName = SqlServerProvider;
         }
 
-        protected override DbCommand CreateCommand(string sql, DbConnection connection)
-        {
-            return new SqlCommand(sql, (SqlConnection) connection);
-        }
+        public sealed override string ProviderInvariantName { get; set; }
     }
 }
