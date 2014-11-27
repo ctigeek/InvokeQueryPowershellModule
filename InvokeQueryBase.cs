@@ -6,7 +6,7 @@ using System.Text;
 
 namespace InvokeQuery
 {
-    public abstract class InvokeQueryBase : Cmdlet, IDisposable
+    public abstract class InvokeQueryBase : PSCmdlet, IDisposable
     {
         protected InvokeQueryBase()
         {
@@ -37,10 +37,10 @@ namespace InvokeQuery
         public SwitchParameter NonQuery { get; set; }
 
         [Parameter]
-        public SwitchParameter UseTransaction { get; set; }
+        public SwitchParameter StoredProcedure { get; set; }
 
         [Parameter]
-        public SwitchParameter StoredProcedure { get; set; }
+        public SwitchParameter WhatIf { get; set; }
 
         [Parameter]
         public string Database { get; set; }
@@ -64,32 +64,44 @@ namespace InvokeQuery
 
         protected override void BeginProcessing()
         {
-            SetDefaultServerProperty();
+            if (WhatIf)
+            {
+                WriteVerbose("WhatIf is on.  No connection to the db will be made and no queries will actually be run.");
+            }
+            
+            ConfigureServerProperty();
+            ConfigureConnectionString();
+            WriteVerbose("Using the following connection string: " + ScrubConnectionString(ConnectionString));
+
+            WriteVerbose("Creating DbProvider Factory using the following Invarian Name: " + ProviderInvariantName);
             ProviderFactory = DbProviderFactories.GetFactory(ProviderInvariantName);
+
             WriteVerbose("Opening connection...");
             Connection = GetDbConnection();
-            Connection.Open();
             WriteVerbose("Connection to database is open.");
         }
 
-        protected virtual void SetDefaultServerProperty()
+        protected virtual void ConfigureServerProperty()
         {
             if (string.IsNullOrEmpty(Server))
             {
                 Server = "localhost";
-                WriteVerbose("Server set to " + Server);
             }
         }
 
         protected virtual DbConnection GetDbConnection()
         {
+            if (WhatIf)
+            {
+                return null;
+            }
             var connection = ProviderFactory.CreateConnection();
             if (connection == null)
             {
                 throw new ArgumentException("Unable to create a Db Provider Factory from provider string `" + ProviderInvariantName + "`.");
             }
-            connection.ConnectionString = CreateConnectionString();
-            WriteVerbose("Using the following connection string: " + connection.ConnectionString);
+            connection.ConnectionString = ConnectionString;
+            connection.Open();
             return connection;
         }
 
@@ -101,6 +113,7 @@ namespace InvokeQuery
                 ProgressRecord.CurrentOperation = "Running query number " + QueryNumber.ToString();
                 WriteProgress(ProgressRecord);
                 WriteVerbose("Running query number " + QueryNumber.ToString());
+                WriteVerbose("Running the following query: " + Query);
 
                 using (GetTransacitonScope())
                 {
@@ -127,6 +140,10 @@ namespace InvokeQuery
 
         protected virtual DbCommand GetDbCommand()
         {
+            if (WhatIf)
+            {
+                return null;
+            }
             var command = ProviderFactory.CreateCommand();
             command.Connection = Connection;
             command.CommandText = Query;
@@ -139,6 +156,13 @@ namespace InvokeQuery
 
         private void RunQuery()
         {
+            if (WhatIf)
+            {
+                WriteVerbose("Query was not actually run, so returning 0 rows.");
+                WriteObject(new DataTable[0]);
+                return;
+            }
+
             var command = GetDbCommand();
             var dataTable = new DataTable();
             var adapter = ProviderFactory.CreateDataAdapter();
@@ -163,7 +187,12 @@ namespace InvokeQuery
 
         private void RunNonQuery()
         {
-            WriteVerbose("Running NonQuery query...");
+            if (WhatIf)
+            {
+                WriteVerbose("Query was not actually run, so returning 0 for rows affected.");
+                WriteObject(0);
+                return;
+            }
             var command = GetDbCommand();
             var result = command.ExecuteNonQuery();
             WriteVerbose("NonQuery query complete. " + result + " rows affected.");
@@ -172,16 +201,21 @@ namespace InvokeQuery
 
         private void RunScalarQuery()
         {
-            WriteVerbose("Running scalar query...");
+            if (WhatIf)
+            {
+                WriteVerbose("Query was not actually run, so returning 0 for value.");
+                WriteObject(0);
+                return;
+            }
             var command = GetDbCommand();
             var result = command.ExecuteScalar();
             if (result != null)
             {
-                WriteVerbose("Query complete. Retrieved scalar result:" + result.ToString());
+                WriteVerbose("Scalar Query complete. Retrieved result:" + result.ToString());
             }
             else
             {
-                WriteVerbose("Query complete. Nothing was returned.");
+                WriteVerbose("Scalar Query complete. Nothing was returned.");
             }
             WriteObject(result);
         }
@@ -209,7 +243,7 @@ namespace InvokeQuery
                 ProgressRecord.RecordType = ProgressRecordType.Completed;
                 ProgressRecord.CurrentOperation = "Closing connection...";
                 WriteProgress(ProgressRecord);
-                WriteVerbose("Closing connection...");
+                WriteVerbose("Complete...");
             }
             CloseConnection();
         }
@@ -223,15 +257,18 @@ namespace InvokeQuery
         {
             if (Connection != null)
             {
-                Connection.Close();
+                if (Connection.State == ConnectionState.Open)
+                {
+                    Connection.Close();
+                }
                 Connection.Dispose();
                 Connection = null;
             }
         }
 
-        protected virtual string CreateConnectionString()
+        protected virtual void ConfigureConnectionString()
         {
-            if (!string.IsNullOrEmpty(ConnectionString)) return ConnectionString;
+            if (!string.IsNullOrEmpty(ConnectionString)) return;
 
             var connString = new StringBuilder();
             connString.AppendFormat("Data Source={0};", Server);
@@ -255,7 +292,35 @@ namespace InvokeQuery
             {
                 connString.AppendFormat("Connection Timeout={0};", ConnectionTimeout);
             }
-            return connString.ToString();
+            ConnectionString = connString.ToString();
+        }
+
+        private string ScrubConnectionString(string connectionString)
+        {
+            var index = connectionString.IndexOf("assword=");
+            if (index >= 0)
+            {
+                index += 8;
+                var semiIndex = connectionString.IndexOf(";", index);
+                if (index < connectionString.Length)
+                {
+                    if (semiIndex > 0)
+                    {
+                        var password = connectionString.Substring(index, semiIndex - index);
+                        return connectionString.Replace(password, "xxxxxxxxxx");
+                    }
+                    else
+                    {
+                        var password = connectionString.Substring(index);
+                        return connectionString.Replace(password, "xxxxxxxxxx");
+                    }
+                }
+                return connectionString;
+            }
+            else
+            {
+                return connectionString;
+            }
         }
     }
 }

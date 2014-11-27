@@ -2,12 +2,11 @@
 
 namespace InvokeQuery
 {
-    [Cmdlet("Invoke", "Query")]
+    [Cmdlet("Invoke", "Query", SupportsTransactions = true)]
     public class InvokeQuery : InvokeQueryBase
     {
         public InvokeQuery()
         {
-            Server = "localhost";
         }
     }
 }

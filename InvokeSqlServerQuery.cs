@@ -4,7 +4,7 @@ using Microsoft.Win32;
 
 namespace InvokeQuery
 {
-    [Cmdlet("Invoke","SqlServerQuery")]
+    [Cmdlet("Invoke","SqlServerQuery", SupportsTransactions = true)]
     public class InvokeSqlServerQuery : InvokeQueryBase
     {
         private const string SqlServerProvider = "System.Data.SqlClient";
@@ -13,7 +13,7 @@ namespace InvokeQuery
             ProviderInvariantName = SqlServerProvider;
         }
 
-        protected override void SetDefaultServerProperty()
+        protected override void ConfigureServerProperty()
         {
             if (string.IsNullOrEmpty(Server))
             {

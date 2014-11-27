@@ -2,7 +2,7 @@
 
 namespace InvokeQuery
 {
-    [Cmdlet("Invoke", "PostgreSqlQuery")]
+    [Cmdlet("Invoke", "PostgreSqlQuery", SupportsTransactions = true)]
     public class InvokePostgreSqlQuery : InvokeQueryBase
     {
         private const string NpgsqlDataProvider = "Npgsql.NpgsqlClient";

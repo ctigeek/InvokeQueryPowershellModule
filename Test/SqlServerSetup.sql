@@ -29,6 +29,11 @@ create table TestTable1 (
    PRIMARY KEY CLUSTERED ([id] ASC)
 );
 GO
+CREATE UNIQUE NONCLUSTERED INDEX [NonClusteredIndex-20141127-110617] ON [dbo].[TestTable1] ([someInt] ASC);
+GO
+
+
+
 
 use InvokeQueryTest;
 GO

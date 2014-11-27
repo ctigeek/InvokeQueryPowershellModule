@@ -2,7 +2,7 @@
 
 namespace InvokeQuery
 {
-    [Cmdlet("Invoke","MySqlQuery")]
+    [Cmdlet("Invoke","MySqlQuery", SupportsTransactions = true)]
     public  class InvokeMySqlQuery : InvokeQueryBase
     {
         private const string MySqlProvider = "MySql.Data.MySqlClient";
