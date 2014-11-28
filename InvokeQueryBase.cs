@@ -22,6 +22,7 @@ namespace InvokeQuery
         public string Query { get; set; }
 
         [Parameter]
+        [Credential]
         public PSCredential Credential { get; set; }
 
         [Parameter]
