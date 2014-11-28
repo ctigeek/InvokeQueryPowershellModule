@@ -44,6 +44,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="GetDbProviderInfo.cs" />
     <Compile Include="InvokeMySqlQuery.cs" />
     <Compile Include="InvokePostgreSqlQuery.cs" />
     <Compile Include="InvokeQuery.cs" />
