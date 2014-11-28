@@ -11,7 +11,7 @@ namespace InvokeQuery
         protected InvokeQueryBase()
         {
             ConnectionTimeout = -1;
-            CommandTimeout = 60;
+            CommandTimeout = -1;
             Credential = PSCredential.Empty;
             QueryNumber = 0;
             ProgressRecord = new ProgressRecord(1, "Running Queries...", "Running...");
@@ -40,16 +40,10 @@ namespace InvokeQuery
         public SwitchParameter StoredProcedure { get; set; }
 
         [Parameter]
-        public SwitchParameter WhatIf { get; set; }
-
-        [Parameter]
         public string Database { get; set; }
 
         [Parameter]
         public string Server { get; set; }
-
-        [Parameter]
-        public string Port { get; set; }
 
         [Parameter]
         public string ConnectionString { get; set; }
@@ -64,11 +58,21 @@ namespace InvokeQuery
 
         protected override void BeginProcessing()
         {
-            if (WhatIf)
+            if (NonQuery && Scalar)
             {
-                WriteVerbose("WhatIf is on.  No connection to the db will be made and no queries will actually be run.");
+                throw new ArgumentException("You cannot use both the NonQuery and the Scalar switches at the same time.");
             }
-            
+
+            if (!string.IsNullOrEmpty(ConnectionString) && (!string.IsNullOrEmpty(Server) || !string.IsNullOrEmpty(Database) || ConnectionTimeout > 0))
+            {
+                throw new ArgumentException("If you specify a connection string, the Server, Database, and ConnectionTimeout parameter should not be used.");
+            }
+
+            if (string.IsNullOrEmpty(ProviderInvariantName))
+            {
+                throw new ArgumentNullException("ProviderInvariantName");
+            }
+
             ConfigureServerProperty();
             ConfigureConnectionString();
             WriteVerbose("Using the following connection string: " + ScrubConnectionString(ConnectionString));
@@ -91,10 +95,6 @@ namespace InvokeQuery
 
         protected virtual DbConnection GetDbConnection()
         {
-            if (WhatIf)
-            {
-                return null;
-            }
             var connection = ProviderFactory.CreateConnection();
             if (connection == null)
             {
@@ -140,13 +140,13 @@ namespace InvokeQuery
 
         protected virtual DbCommand GetDbCommand()
         {
-            if (WhatIf)
-            {
-                return null;
-            }
             var command = ProviderFactory.CreateCommand();
             command.Connection = Connection;
             command.CommandText = Query;
+            if (CommandTimeout > 0)
+            {
+                command.CommandTimeout = CommandTimeout;
+            }
             if (StoredProcedure)
             {
                 command.CommandType = CommandType.StoredProcedure;
@@ -156,23 +156,23 @@ namespace InvokeQuery
 
         private void RunQuery()
         {
-            if (WhatIf)
+            if (ShouldProcess("Database server", "Run Query:`" + Query + "`"))
             {
-                WriteVerbose("Query was not actually run, so returning 0 rows.");
+                var command = GetDbCommand();
+                var dataTable = new DataTable();
+                var adapter = ProviderFactory.CreateDataAdapter();
+                adapter.SelectCommand = command;
+                using (adapter)
+                {
+                    adapter.Fill(dataTable);
+                }
+                WriteVerbose("Query returned " + dataTable.Rows.Count + " rows.");
+                WriteObject(GetDataRowArrayFromTable(dataTable));
+            }
+            else
+            {
                 WriteObject(new DataTable[0]);
-                return;
             }
-
-            var command = GetDbCommand();
-            var dataTable = new DataTable();
-            var adapter = ProviderFactory.CreateDataAdapter();
-            adapter.SelectCommand = command;
-            using (adapter)
-            {
-                adapter.Fill(dataTable);
-            }
-            WriteVerbose("Query returned " + dataTable.Rows.Count + " rows.");
-            WriteObject(GetDataRowArrayFromTable(dataTable));
         }
 
         private DataRow[] GetDataRowArrayFromTable(DataTable dataTable)
@@ -187,37 +187,39 @@ namespace InvokeQuery
 
         private void RunNonQuery()
         {
-            if (WhatIf)
+            if (ShouldProcess("Database server", "Run Non-Query:`" + Query + "`"))
             {
-                WriteVerbose("Query was not actually run, so returning 0 for rows affected.");
-                WriteObject(0);
-                return;
+                var command = GetDbCommand();
+                var result = command.ExecuteNonQuery();
+                WriteVerbose("NonQuery query complete. " + result + " rows affected.");
+                WriteObject(result);
             }
-            var command = GetDbCommand();
-            var result = command.ExecuteNonQuery();
-            WriteVerbose("NonQuery query complete. " + result + " rows affected.");
-            WriteObject(result);
+            else
+            {
+                WriteObject(0);
+            }
         }
 
         private void RunScalarQuery()
         {
-            if (WhatIf)
+            if (ShouldProcess("Database server", "Run Scalar Query: `" + Query + "`"))
             {
-                WriteVerbose("Query was not actually run, so returning 0 for value.");
-                WriteObject(0);
-                return;
-            }
-            var command = GetDbCommand();
-            var result = command.ExecuteScalar();
-            if (result != null)
-            {
-                WriteVerbose("Scalar Query complete. Retrieved result:" + result.ToString());
+                var command = GetDbCommand();
+                var result = command.ExecuteScalar();
+                if (result != null)
+                {
+                    WriteVerbose("Scalar Query complete. Retrieved result:" + result.ToString());
+                }
+                else
+                {
+                    WriteVerbose("Scalar Query complete. Nothing was returned.");
+                }
+                WriteObject(result);
             }
             else
             {
-                WriteVerbose("Scalar Query complete. Nothing was returned.");
+                WriteObject(0);
             }
-            WriteObject(result);
         }
 
         private IDisposable GetTransacitonScope()
@@ -275,10 +277,6 @@ namespace InvokeQuery
             if (!string.IsNullOrEmpty(Database))
             {
                 connString.AppendFormat("Initial Catalog={0};", Database);
-            }
-            if (!string.IsNullOrEmpty(Port))
-            {
-                connString.AppendFormat("Port={0};", Port);
             }
             if (Credential != PSCredential.Empty)
             {

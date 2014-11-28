@@ -2,7 +2,7 @@
 
 namespace InvokeQuery
 {
-    [Cmdlet("Invoke", "Query", SupportsTransactions = true)]
+    [Cmdlet("Invoke", "Query", SupportsTransactions = true, SupportsShouldProcess = true, ConfirmImpact = ConfirmImpact.Low)]
     public class InvokeQuery : InvokeQueryBase
     {
         public InvokeQuery()

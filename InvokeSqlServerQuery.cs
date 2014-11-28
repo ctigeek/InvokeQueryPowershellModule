@@ -4,7 +4,7 @@ using Microsoft.Win32;
 
 namespace InvokeQuery
 {
-    [Cmdlet("Invoke","SqlServerQuery", SupportsTransactions = true)]
+    [Cmdlet("Invoke","SqlServerQuery", SupportsTransactions = true, SupportsShouldProcess = true, ConfirmImpact = ConfirmImpact.Low)]
     public class InvokeSqlServerQuery : InvokeQueryBase
     {
         private const string SqlServerProvider = "System.Data.SqlClient";
