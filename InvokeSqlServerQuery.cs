@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Data.Common;
+using System.Data.SqlClient;
 using System.Management.Automation;
 using Microsoft.Win32;
 
@@ -7,10 +9,9 @@ namespace InvokeQuery
     [Cmdlet("Invoke","SqlServerQuery", SupportsTransactions = true, SupportsShouldProcess = true, ConfirmImpact = ConfirmImpact.Low)]
     public class InvokeSqlServerQuery : InvokeQueryBase
     {
-        private const string SqlServerProvider = "System.Data.SqlClient";
-        public InvokeSqlServerQuery()
+        protected override DbProviderFactory GetProviderFactory()
         {
-            ProviderInvariantName = SqlServerProvider;
+            return SqlClientFactory.Instance;
         }
 
         protected override void ConfigureServerProperty()
@@ -36,21 +37,20 @@ namespace InvokeQuery
 
         private string FindLocalSqlInstance()
         {
+            string localInstanceName = null;
             var key = GetRegistryKey("SOFTWARE\\Microsoft\\Microsoft SQL Server\\Instance Names\\SQL");
-            if (key.ValueCount > 0)
+            using (key)
             {
-                var localInstanceName = key.GetValueNames()[0];
-                //TODO: what is the value if sql server is the default instance? will the value be "default"?
-                if (localInstanceName == "Default")
+                if (key.ValueCount > 0)
                 {
-                    return string.Empty;
+                    localInstanceName = key.GetValueNames()[0];
+                    if (localInstanceName.ToLower() == "default") localInstanceName = string.Empty;
                 }
-                return localInstanceName;
             }
-            return null;
+            return localInstanceName;
         }
 
-        public static RegistryKey GetRegistryKey(string keyPath)
+        private static RegistryKey GetRegistryKey(string keyPath)
         {
             RegistryKey localMachineRegistry
                 = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine,

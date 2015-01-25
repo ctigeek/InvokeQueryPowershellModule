@@ -1,14 +1,15 @@
-﻿using System.Management.Automation;
+﻿using System.Data.Common;
+using System.Management.Automation;
+using MySql.Data.MySqlClient;
 
 namespace InvokeQuery
 {
     [Cmdlet("Invoke", "MySqlQuery", SupportsTransactions = true, SupportsShouldProcess = true, ConfirmImpact = ConfirmImpact.Low)]
     public  class InvokeMySqlQuery : InvokeQueryBase
     {
-        private const string MySqlProvider = "MySql.Data.MySqlClient";
-        public InvokeMySqlQuery()
+        protected override DbProviderFactory GetProviderFactory()
         {
-            ProviderInvariantName = MySqlProvider;
+            return MySqlClientFactory.Instance;
         }
     }
 }

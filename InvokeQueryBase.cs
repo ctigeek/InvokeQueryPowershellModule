@@ -49,9 +49,6 @@ namespace InvokeQuery
         [Parameter]
         public string ConnectionString { get; set; }
 
-        [Parameter]
-        public string ProviderInvariantName { get; set; }
-
         protected DbProviderFactory ProviderFactory { get; set; }
         protected DbConnection Connection { get; private set; }
         protected int QueryNumber { get; set; }
@@ -69,22 +66,18 @@ namespace InvokeQuery
                 throw new ArgumentException("If you specify a connection string, the Server, Database, and ConnectionTimeout parameter should not be used.");
             }
 
-            if (string.IsNullOrEmpty(ProviderInvariantName))
-            {
-                throw new ArgumentNullException("ProviderInvariantName");
-            }
-
             ConfigureServerProperty();
             ConfigureConnectionString();
             WriteVerbose("Using the following connection string: " + ScrubConnectionString(ConnectionString));
-
-            WriteVerbose("Creating DbProvider Factory using the following Invarian Name: " + ProviderInvariantName);
-            ProviderFactory = DbProviderFactories.GetFactory(ProviderInvariantName);
+            
+            ProviderFactory = GetProviderFactory();
 
             WriteVerbose("Opening connection...");
             Connection = GetDbConnection();
             WriteVerbose("Connection to database is open.");
         }
+
+        protected abstract DbProviderFactory GetProviderFactory();
 
         protected virtual void ConfigureServerProperty()
         {
@@ -99,7 +92,7 @@ namespace InvokeQuery
             var connection = ProviderFactory.CreateConnection();
             if (connection == null)
             {
-                throw new ArgumentException("Unable to create a Db Provider Factory from provider string `" + ProviderInvariantName + "`.");
+                throw new ApplicationException("Unable to create conneciton. Please make sure all DLL libraries have been installed.");
             }
             connection.ConnectionString = ConnectionString;
             connection.Open();
