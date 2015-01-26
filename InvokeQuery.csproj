@@ -66,6 +66,9 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="NewDatabaseBase.cs" />
+    <Compile Include="NewSqlCompactDatabase.cs" />
+    <Compile Include="NewSqliteDatabase.cs" />
     <Compile Include="GetDbProviderInfo.cs" />
     <Compile Include="InvokeSqlCompactQuery.cs" />
     <Compile Include="InvokeFirebirdQuery.cs" />
@@ -82,6 +85,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
+    <None Include="DebugSetup.ps1">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Include="InvokeQuery.psd1">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
