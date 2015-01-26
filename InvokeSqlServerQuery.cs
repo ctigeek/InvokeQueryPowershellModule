@@ -35,6 +35,15 @@ namespace InvokeQuery
             }
         }
 
+        protected override void ConfigureConnectionString()
+        {
+            base.ConfigureConnectionString();
+            if (!ConnectionString.Contains("Password="))
+            {
+                ConnectionString = ConnectionString + "Integrated Security=SSPI;";
+            }
+        }
+
         private string FindLocalSqlInstance()
         {
             string localInstanceName = null;

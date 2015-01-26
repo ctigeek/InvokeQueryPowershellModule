@@ -75,6 +75,8 @@ namespace InvokeQuery
             WriteVerbose("Opening connection...");
             Connection = GetDbConnection();
             WriteVerbose("Connection to database is open.");
+
+            //TODO: do we need to start the transaction here if there are multiple queries?
         }
 
         protected abstract DbProviderFactory GetProviderFactory();
@@ -275,10 +277,6 @@ namespace InvokeQuery
             if (Credential != PSCredential.Empty)
             {
                 connString.AppendFormat("User ID={0};Password={1};", Credential.UserName, Credential.Password.ConvertToUnsecureString());
-            }
-            else
-            {
-                connString.Append("Integrated Security=SSPI;");
             }
             if (ConnectionTimeout > 0)
             {
