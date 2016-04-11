@@ -8,10 +8,9 @@ Write-Host "Hello world"
 $query = "select * from sometable;"
 $query | Invoke-SqlServerQuery -Database "test" -Verbose
 
-
-$query = "insert into sometable values (@id, @str, @inte, @dt);"
 $params = @{"id"=7; "str"="hello"; "inte"=44; "dt"=(Get-Date); "blah"="blah"}
+#40..35 | %{ "insert into sometable values ($($_), @str, @inte, @dt);" } | Invoke-SqlServerQuery -Database "test" -Parameters $params -CUD -Verbose
 
-$query | Invoke-SqlServerQuery -Database "test" -Parameters $params -NonQuery -Verbose
-
+##$query = "insert into sometable values (@id, @str, @inte, @dt);"
+##$query | Invoke-SqlServerQuery -Database "test" -Parameters $params -NonQuery -Verbose
 

@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Data;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Management.Automation;
 using System.Text;
 
@@ -36,7 +37,7 @@ namespace InvokeQuery
         public SwitchParameter Scalar { get; set; }
 
         [Parameter]
-        public SwitchParameter NonQuery { get; set; }
+        public SwitchParameter CUD { get; set; }
 
         [Parameter]
         public SwitchParameter StoredProcedure { get; set; }
@@ -53,23 +54,28 @@ namespace InvokeQuery
         [Parameter]
         public Hashtable Parameters { get; set; }
 
+        [Parameter]
+        public SwitchParameter NoTrans { get; set; }
+
         protected DbProviderFactory ProviderFactory { get; set; }
         protected DbConnection Connection { get; private set; }
         protected int QueryNumber { get; set; }
         protected ProgressRecord ProgressRecord { get; private set; }
+        protected DbTransaction Transaction { get; private set; }
+        private Stopwatch stopwatch { get; set; }
 
         protected override void BeginProcessing()
         {
-            if (NonQuery && Scalar)
+            if (CUD && Scalar)
             {
-                throw new ArgumentException("You cannot use both the NonQuery and the Scalar switches at the same time.");
+                throw new ArgumentException("You cannot use both the CUD and the Scalar switches at the same time.");
             }
 
             if (!string.IsNullOrEmpty(ConnectionString) && (!string.IsNullOrEmpty(Server) || !string.IsNullOrEmpty(Database) || ConnectionTimeout > 0))
             {
                 throw new ArgumentException("If you specify a connection string, the Server, Database, and ConnectionTimeout parameter should not be used.");
             }
-
+            stopwatch = Stopwatch.StartNew();
             ConfigureServerProperty();
             ConfigureConnectionString();
             WriteVerbose("Using the following connection string: " + ScrubConnectionString(ConnectionString));
@@ -80,7 +86,11 @@ namespace InvokeQuery
             Connection = GetDbConnection();
             WriteVerbose("Connection to database is open.");
 
-            //TODO: do we need to start the transaction here if there are multiple queries?
+            if (!TransactionAvailable() && !NoTrans && CUD)
+            {
+                WriteVerbose("You are not using an implicit transaction for your CUD so I am creating an explicit one. This one transaction will be used for all queries piped in. If you don't want this to happen, use the NoTrans switch.");
+                Transaction = Connection.BeginTransaction();
+            }
         }
 
         protected abstract DbProviderFactory GetProviderFactory();
@@ -121,7 +131,7 @@ namespace InvokeQuery
                     {
                         RunScalarQuery();
                     }
-                    else if (NonQuery)
+                    else if (CUD)
                     {
                         RunNonQuery();
                     }
@@ -131,8 +141,9 @@ namespace InvokeQuery
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
+                CloseTransaction(false);
                 StopProcessing();
                 throw;
             }
@@ -167,6 +178,10 @@ namespace InvokeQuery
                     command.Parameters.Add(param);
                     WriteVerbose("Adding parameter " + param.ParameterName + "=" + param.Value.ToString());
                 }
+            }
+            if (Transaction != null)
+            {
+                command.Transaction = Transaction;
             }
             return command;
         }
@@ -264,7 +279,33 @@ namespace InvokeQuery
                 WriteProgress(ProgressRecord);
                 WriteVerbose("Complete...");
             }
+            CloseTransaction(true);
             CloseConnection();
+            if (stopwatch != null)
+            {
+                stopwatch.Stop();
+                WriteVerbose("Processed " + QueryNumber + " queries in " + stopwatch.ElapsedMilliseconds + " milliseconds.");
+                stopwatch = null;
+            }
+        }
+
+        private void CloseTransaction(bool commit)
+        {
+            if (Transaction != null)
+            {
+                if (commit)
+                {
+                    WriteVerbose("Committing transaction.");
+                    Transaction.Commit();
+                }
+                else
+                {
+                    WriteWarning("Rolling back transaction!");
+                    Transaction.Rollback();
+                }
+                Transaction.Dispose();
+                Transaction = null;
+            }
         }
 
         public void Dispose()
