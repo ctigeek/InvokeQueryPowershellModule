@@ -53,7 +53,7 @@ namespace InvokeQuery
                 if (key.ValueCount > 0)
                 {
                     localInstanceName = key.GetValueNames()[0];
-                    if (localInstanceName.ToLower() == "default") localInstanceName = string.Empty;
+                    if (localInstanceName.ToLower() == "default" || localInstanceName.ToLower() == "mssqlserver") localInstanceName = string.Empty;
                 }
             }
             return localInstanceName;
