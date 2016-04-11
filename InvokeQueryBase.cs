@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Data;
 using System.Data.Common;
 using System.Management.Automation;
@@ -48,6 +49,9 @@ namespace InvokeQuery
 
         [Parameter]
         public string ConnectionString { get; set; }
+
+        [Parameter]
+        public Hashtable Parameters { get; set; }
 
         protected DbProviderFactory ProviderFactory { get; set; }
         protected DbConnection Connection { get; private set; }
@@ -146,6 +150,22 @@ namespace InvokeQuery
             if (StoredProcedure)
             {
                 command.CommandType = CommandType.StoredProcedure;
+            }
+            if (Parameters != null)
+            {
+                foreach (var key in Parameters.Keys)
+                {
+                    var obj = Parameters[key];
+                    var pso = obj as PSObject;
+                    if (pso != null)
+                    {
+                        obj = pso.ImmediateBaseObject;
+                    }
+                    var param = ProviderFactory.CreateParameter();
+                    param.ParameterName = key.ToString();
+                    param.Value = obj;
+                    command.Parameters.Add(param);
+                }
             }
             return command;
         }
