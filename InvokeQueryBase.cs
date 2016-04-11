@@ -165,6 +165,7 @@ namespace InvokeQuery
                     param.ParameterName = key.ToString();
                     param.Value = obj;
                     command.Parameters.Add(param);
+                    WriteVerbose("Adding parameter " + param.ParameterName + "=" + param.Value.ToString());
                 }
             }
             return command;
