@@ -20,8 +20,11 @@ namespace InvokeQuery
             ProgressRecord.RecordType = ProgressRecordType.Processing;
         }
 
-        [Parameter(Mandatory = true, ValueFromPipeline = true)]
+        [Parameter(Mandatory = true, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
         public string Query { get; set; }
+
+        [Parameter(ValueFromPipelineByPropertyName = true)]
+        public Hashtable Parameters { get; set; }
 
         [Parameter]
         [Credential]
@@ -50,9 +53,6 @@ namespace InvokeQuery
 
         [Parameter]
         public string ConnectionString { get; set; }
-
-        [Parameter]
-        public Hashtable Parameters { get; set; }
 
         [Parameter]
         public SwitchParameter NoTrans { get; set; }
