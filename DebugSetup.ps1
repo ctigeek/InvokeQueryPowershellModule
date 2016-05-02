@@ -6,16 +6,21 @@ Write-Host "Hello world"
 ##
 
 $query = "select * from sometable;"
-$query | Invoke-SqlServerQuery -Database "test" -Verbose
+#$query | Invoke-SqlServerQuery -Database "test" -Verbose
 
 ##$params = @{"id"=7; "str"="hello"; "inte"=44; "dt"=(Get-Date); "blah"="blah"}
 
-111..123 | %{
-	$querySet = New-Object System.Management.Automation.PSObject
-	$querySet | Add-Member -MemberType NoteProperty -Name "Query" -Value "insert into sometable values (@id, @str, @inte, @dt);"
-	$querySet | Add-Member -MemberType NoteProperty -Name "Parameters" -Value $(@{ "id"=$_; "str"="hi"; "inte"=$_ + 99; "dt"=(Get-Date); })
-	$querySet
-} | Invoke-SqlServerQuery -Database "test" -CUD -Verbose
+#156..160 | %{
+#	[pscustomobject] @{
+#		"Sql" = "insert into sometable values (@id, @str, @inte, @dt);";
+#		"Parameters" = @{ "id"=$_; "str"="hi"; "inte"=$_ + 99; "dt"=$(Get-Date); }
+#	}
+#} | Invoke-SqlServerQuery -Database "test" -CUD -Verbose
+
+
+171..175 | %{
+	New-SqlQuery -Sql "insert into sometable values (@id, @str, @inte, @dt);" -ExpectedRowCount 0  -Parameters @{ "id"=$_; "str"="hi"; "inte"=$_ + 99; "dt"=$(Get-Date); } -CUD
+	} | Invoke-SqlServerQuery -Database "test" -Verbose
 
 ##$query = "insert into sometable values (@id, @str, @inte, @dt);"
 ##$query | Invoke-SqlServerQuery -Database "test" -Parameters $params -NonQuery -Verbose

@@ -19,18 +19,21 @@ namespace InvokeQuery
             ProgressRecord = new ProgressRecord(1, "Running Queries...", "Running...");
             ProgressRecord.RecordType = ProgressRecordType.Processing;
         }
+        
+        [Parameter(ParameterSetName = "SqlQuery", Mandatory = true, ValueFromPipeline = true)]
+        public SqlQuery SqlQuery { get; set; }
 
-        [Parameter(Mandatory = true, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
-        public string Query { get; set; }
+        [Parameter(ParameterSetName = "Default", Mandatory = true, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
+        public string Sql { get; set; }
 
-        [Parameter(ValueFromPipelineByPropertyName = true)]
+        [Parameter(ParameterSetName = "Default")]
         public Hashtable Parameters { get; set; }
 
         [Parameter]
         [Credential]
         public PSCredential Credential { get; set; }
 
-        [Parameter]
+        [Parameter(ParameterSetName = "Default")]
         public int CommandTimeout { get; set; }
 
         [Parameter]
@@ -39,10 +42,10 @@ namespace InvokeQuery
         [Parameter]
         public SwitchParameter Scalar { get; set; }
 
-        [Parameter]
+        [Parameter(ParameterSetName = "Default")]
         public SwitchParameter CUD { get; set; }
 
-        [Parameter]
+        [Parameter(ParameterSetName = "Default")]
         public SwitchParameter StoredProcedure { get; set; }
 
         [Parameter]
@@ -57,23 +60,32 @@ namespace InvokeQuery
         [Parameter]
         public SwitchParameter NoTrans { get; set; }
 
+        [Parameter(ParameterSetName = "Default")]
+        public int ExpectedRowCount { get; set; } = -1;
+
         protected DbProviderFactory ProviderFactory { get; set; }
         protected DbConnection Connection { get; private set; }
         protected int QueryNumber { get; set; }
         protected ProgressRecord ProgressRecord { get; private set; }
         protected DbTransaction Transaction { get; private set; }
         private Stopwatch stopwatch { get; set; }
+        private PSTransactionContext TransactionContext { get; set; }
 
         protected override void BeginProcessing()
         {
-            if (CUD && Scalar)
+            if (SqlQuery == null && ExpectedRowCount >= 0 && !CUD)
             {
-                throw new ArgumentException("You cannot use both the CUD and the Scalar switches at the same time.");
+                throw new PSArgumentException("You can only specify an expected number of rows for a CUD operation. Did you forget the CUD switch?");
+            }
+
+            if (SqlQuery == null &&  CUD && Scalar)
+            {
+                throw new PSArgumentException("You cannot use both the CUD and the Scalar switches at the same time.");
             }
 
             if (!string.IsNullOrEmpty(ConnectionString) && (!string.IsNullOrEmpty(Server) || !string.IsNullOrEmpty(Database) || ConnectionTimeout > 0))
             {
-                throw new ArgumentException("If you specify a connection string, the Server, Database, and ConnectionTimeout parameter should not be used.");
+                throw new PSArgumentException("If you specify a connection string, the Server, Database, and ConnectionTimeout parameter should not be used.");
             }
             stopwatch = Stopwatch.StartNew();
             ConfigureServerProperty();
@@ -82,15 +94,10 @@ namespace InvokeQuery
             
             ProviderFactory = GetProviderFactory();
 
-            WriteVerbose("Opening connection...");
+            WriteVerbose("Opening connection.");
             Connection = GetDbConnection();
+            EnlistAmbiantTransaction();
             WriteVerbose("Connection to database is open.");
-
-            if (!TransactionAvailable() && !NoTrans && CUD)
-            {
-                WriteVerbose("You are not using an implicit transaction for your CUD so I am creating an explicit one. This one transaction will be used for all queries piped in. If you don't want this to happen, use the NoTrans switch.");
-                Transaction = Connection.BeginTransaction();
-            }
         }
 
         protected abstract DbProviderFactory GetProviderFactory();
@@ -119,26 +126,28 @@ namespace InvokeQuery
         {
             try
             {
+                if (SqlQuery == null)
+                {
+                    SqlQuery = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, StoredProcedure, ExpectedRowCount);
+                }
+
                 QueryNumber++;
                 ProgressRecord.CurrentOperation = "Running query number " + QueryNumber.ToString();
                 WriteProgress(ProgressRecord);
                 WriteVerbose("Running query number " + QueryNumber.ToString());
-                WriteVerbose("Running the following query: " + Query);
+                WriteVerbose("Running the following query: " + SqlQuery.Sql);
 
-                using (GetTransacitonScope())
+                if (Scalar)
                 {
-                    if (Scalar)
-                    {
-                        RunScalarQuery();
-                    }
-                    else if (CUD)
-                    {
-                        RunNonQuery();
-                    }
-                    else
-                    {
-                        RunQuery();
-                    }
+                    RunScalarQuery();
+                }
+                else if (SqlQuery.CUD)
+                {
+                    RunNonQuery();
+                }
+                else
+                {
+                    RunQuery();
                 }
             }
             catch
@@ -147,26 +156,27 @@ namespace InvokeQuery
                 StopProcessing();
                 throw;
             }
+            SqlQuery = null;
         }
 
         protected virtual DbCommand GetDbCommand()
         {
             var command = ProviderFactory.CreateCommand();
             command.Connection = Connection;
-            command.CommandText = Query;
-            if (CommandTimeout > 0)
+            command.CommandText = SqlQuery.Sql;
+            if (SqlQuery.CommandTimeout > 0)
             {
-                command.CommandTimeout = CommandTimeout;
+                command.CommandTimeout = SqlQuery.CommandTimeout;
             }
-            if (StoredProcedure)
+            if (SqlQuery.StoredProcedure)
             {
                 command.CommandType = CommandType.StoredProcedure;
             }
-            if (Parameters != null)
+            if (SqlQuery.Parameters != null)
             {
-                foreach (var key in Parameters.Keys)
+                foreach (var key in SqlQuery.Parameters.Keys)
                 {
-                    var obj = Parameters[key];
+                    var obj = SqlQuery.Parameters[key];
                     var pso = obj as PSObject;
                     if (pso != null)
                     {
@@ -179,6 +189,11 @@ namespace InvokeQuery
                     WriteVerbose("Adding parameter " + param.ParameterName + "=" + param.Value.ToString());
                 }
             }
+            if (Transaction == null && SqlQuery.CUD && TransactionContext == null && !NoTrans)
+            {
+                WriteVerbose("Starting transaction.");
+                Transaction = Connection.BeginTransaction();
+            }
             if (Transaction != null)
             {
                 command.Transaction = Transaction;
@@ -188,7 +203,7 @@ namespace InvokeQuery
 
         private void RunQuery()
         {
-            if (ShouldProcess("Database server", "Run Query:`" + Query + "`"))
+            if (ShouldProcess("Database server", "Run Query:`" + SqlQuery.Sql + "`"))
             {
                 var command = GetDbCommand();
                 var dataTable = new DataTable();
@@ -219,11 +234,15 @@ namespace InvokeQuery
 
         private void RunNonQuery()
         {
-            if (ShouldProcess("Database server", "Run Non-Query:`" + Query + "`"))
+            if (ShouldProcess("Database server", "Run CUD Query:`" + SqlQuery.Sql + "`"))
             {
                 var command = GetDbCommand();
                 var result = command.ExecuteNonQuery();
-                WriteVerbose("NonQuery query complete. " + result + " rows affected.");
+                if (SqlQuery.ExpectedRowCount >= 0 && result != SqlQuery.ExpectedRowCount)
+                {
+                    throw new PSInvalidOperationException("The ExpectedRowCount is " + SqlQuery.ExpectedRowCount + ", but this query had a row count of " + result + " rows. Rolling back the transaction.");
+                }
+                WriteVerbose("CUD query complete. " + result + " rows affected.");
                 WriteObject(result);
             }
             else
@@ -234,7 +253,7 @@ namespace InvokeQuery
 
         private void RunScalarQuery()
         {
-            if (ShouldProcess("Database server", "Run Scalar Query: `" + Query + "`"))
+            if (ShouldProcess("Database server", "Run Scalar Query: `" + SqlQuery.Sql + "`"))
             {
                 var command = GetDbCommand();
                 var result = command.ExecuteScalar();
@@ -254,15 +273,16 @@ namespace InvokeQuery
             }
         }
 
-        private IDisposable GetTransacitonScope()
+        private void EnlistAmbiantTransaction()
         {
-            IDisposable transactionScope = NullDisposable.Instance;
             if (TransactionAvailable())
             {
-                WriteVerbose("Running query in transaction...");
-                transactionScope = CurrentPSTransaction;
+                WriteVerbose("Creating DB connection in established transaction scope.");
+                // Important! By simply fetching the CurrentPSTransaction parameter, it moves the powershell ambient transaction into the current transaction. Only then can we enlist the connection.
+                //https://blogs.msdn.microsoft.com/powershell/2008/05/08/powershell-transactions-quickstart/
+                TransactionContext = CurrentPSTransaction;
+                Connection.EnlistTransaction(System.Transactions.Transaction.Current);
             }
-            return transactionScope;
         }
 
         protected override void EndProcessing()
@@ -277,7 +297,6 @@ namespace InvokeQuery
                 ProgressRecord.RecordType = ProgressRecordType.Completed;
                 ProgressRecord.CurrentOperation = "Closing connection...";
                 WriteProgress(ProgressRecord);
-                WriteVerbose("Complete...");
             }
             CloseTransaction(true);
             CloseConnection();
@@ -286,11 +305,17 @@ namespace InvokeQuery
                 stopwatch.Stop();
                 WriteVerbose("Processed " + QueryNumber + " queries in " + stopwatch.ElapsedMilliseconds + " milliseconds.");
                 stopwatch = null;
+                WriteVerbose("Complete.");
             }
         }
 
         private void CloseTransaction(bool commit)
         {
+            if (TransactionContext != null)
+            {
+                TransactionContext.Dispose();
+                TransactionContext = null;
+            }
             if (Transaction != null)
             {
                 if (commit)
@@ -321,6 +346,7 @@ namespace InvokeQuery
                 {
                     Connection.Close();
                 }
+                WriteVerbose("Closing connection.");
                 Connection.Dispose();
                 Connection = null;
             }

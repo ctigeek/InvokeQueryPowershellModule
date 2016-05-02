@@ -60,6 +60,7 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\..\..\..\Windows\Microsoft.NET\assembly\GAC_MSIL\System.Management.Automation\v4.0_3.0.0.0__31bf3856ad364e35\System.Management.Automation.dll</HintPath>
     </Reference>
+    <Reference Include="System.Transactions" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -80,9 +81,11 @@
     <Compile Include="InvokeQueryBase.cs" />
     <Compile Include="InvokeSqlServerQuery.cs" />
     <Compile Include="InvokeTest.cs" />
+    <Compile Include="NewSqlQuery.cs" />
     <Compile Include="NullDisposable.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SecureStringExtensions.cs" />
+    <Compile Include="SqlQuery.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
