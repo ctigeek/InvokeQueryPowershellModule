@@ -324,3 +324,27 @@ Any error that's thrown prior to the `Complete-Transaction` will cause the trans
 
 **Note**: if you run this code, you will notice a significant delay when the second cmdlet is executed. This is due to the transaction being moved from Sql Server to the Microsoft Distributed Transaction Coordinator service. Subsequent calls to the cmdlet should not have such a delay.
 
+## Options for all Invoke-*Query cmdlets:
+
+#### Options related to the connection:
+* `Credential` _(PSCredential)_ - The user ID and password used to build the connection string. If not provided, it defaults to windows authentication.
+* `Server` _(string)_ - The name of the server used to build the connection string. If not provided, it defaults to "localhost". For Sql Server it defaults to "localhost" plus the name of the default instance of the database.
+* `Database` _(string)_ - The name of the database used to build the connection string. No database name-value pair is added to the connection string if empty.
+* `ConnectionTimeout` _(integer)_ - The connection timeout to use in the connection string. No default value.
+* `ConnectionString` _(string)_ - The full connection string. If you specify this, do not use the Credential, Server, Database, or ConnectionTimeout options.
+* `UseTransaction` _(switch)_ - Use an existing ambiant transaction, created with the Start-Transaction command.
+* `NoTrans` _(switch)_ - Use with `CUD`. Do not use with `UseTransaction` or `ExpectedRowCount`. Indicates that the CUD operation(s) should NOT be run within a transaction. This applies to all queries piped into a single cmdlet.
+
+#### Options related to the command:
+* `Sql` _(string, pipeline)_ - The SQL statement to be executed. This can be raw SQL, or the name of a stored procedure if you use the `StoredProcedure` switch.
+* `Parameters` - _(hashtable)_ - The parameters to pass with the SQL command.
+* `CommandTimeout` _(integer)_ - The command timeout in seconds.
+* `CUD` _(switch)_ - Indicates that the SQL statement contains a Create, Update, or Delete statement. It will execute the query using the ADO.NET command ExecuteNonQuery method and return the number of rows affected.
+* `Scalar` _(switch)_ - Indicates that this SQL statement should only return the first column of the first row returned. i.e. using this option will always return a single value or null.
+* `ExpectedRowCount` _(integer)_ - Use with `CUD`. Indicates the number or rows expected to be affected by the operation. If the number of actual affected rows does not match this parameter, the transaction is rolled back and an error is thrown.
+* `SqlQuery` _(SqlQuery object)_ - Use this object to encapsulate any command parameters so they can be piped into the cmdlet. You can create a SqlQuery object via the New-SqlQuery cmdlet. If you use this parameter you should not use any of the other command options. See examples for details.
+
+#### Other standard options:
+* `WhatIf` - Don't actually run the query, but show what would happen.
+* `Confirm` - Confirm high-impact operations.
+* `Verbose` - Display lots of logging. This will show you the connection string built, the Sql command being executed, and the parameters that are added.
