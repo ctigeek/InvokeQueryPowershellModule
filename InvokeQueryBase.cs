@@ -20,7 +20,7 @@ namespace InvokeQuery
             ProgressRecord.RecordType = ProgressRecordType.Processing;
         }
         
-        [Parameter(ParameterSetName = "SqlQuery", Mandatory = true, ValueFromPipeline = true)]
+        [Parameter(ParameterSetName = "SqlQuery", Mandatory = true, ValueFromPipeline = true, HelpMessage = "Use New-SqlQuery to create a SqlQuery object.")]
         public SqlQuery SqlQuery { get; set; }
 
         [Parameter(ParameterSetName = "Default", Mandatory = true, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
@@ -39,7 +39,7 @@ namespace InvokeQuery
         [Parameter]
         public int ConnectionTimeout { get; set; }
 
-        [Parameter]
+        [Parameter(ParameterSetName = "Default")]
         public SwitchParameter Scalar { get; set; }
 
         [Parameter(ParameterSetName = "Default")]
