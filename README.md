@@ -24,11 +24,13 @@ The Cmdlets in the InvokeQuery module are all built on ADO.NET, and therefore wo
 We also have functionality that's not possible using Sqlcmd, like scalar queries, returning the number of rows affected in a CUD operation, and ...oh yeah... **transactions!** It's also trivial to make the same codebase work with any DB type that has an ADO.NET provider.
 
 ### How to install:
-If you have powershell v5:
+If you have powershell v5 you can install directly from [Powershell Gallery.](https://www.powershellgallery.com/packages/InvokeQuery/0.9.1)
 ```
-import module..... TBD
+Install-Module -Name InvokeQuery
 ```
-If you are on pre-v5 powershell, download the latest release and unzip to `C:\Windows\System32\WindowsPowerShell\v1.0\Modules`.
+
+If you are on pre-v5 powershell, [download the latest release](https://github.com/ctigeek/InvokeQueryPowershellModule/releases) and unzip to `C:\Windows\System32\WindowsPowerShell\v0.9.1\Modules`.
+
 
 ### Usage:
 All examples use Sql Server. Here's the definition of the table that I'm using in all examples:
