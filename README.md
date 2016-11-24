@@ -29,7 +29,7 @@ If you have powershell v5 you can install directly from [Powershell Gallery.](ht
 Install-Module -Name InvokeQuery
 ```
 
-If you are on pre-v5 powershell, [download the latest release](https://github.com/ctigeek/InvokeQueryPowershellModule/releases) and unzip to `C:\Windows\System32\WindowsPowerShell\v0.9.1\Modules`.
+If you are on pre-v5 powershell, [download the latest release](https://github.com/ctigeek/InvokeQueryPowershellModule/releases) and unzip to `C:\Windows\System32\WindowsPowerShell\v1.0\Modules`.
 
 
 ### Usage:
