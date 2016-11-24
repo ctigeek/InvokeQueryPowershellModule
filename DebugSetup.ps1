@@ -6,11 +6,15 @@ Write-Host "Hello world"
 ##
 
 $db = "test"
-$sql1 = "update table1 set someint = 4321 where pk = '1A9F96AE-54FA-40F9-9069-749F3ACF0CEF';"
-$sql2 = "update table1 set someint = 1234 where pk = '89F21B61-891B-42CD-9BED-84BA4B7EB7D0';"
+#$sql1 = "update table1 set someint = 4321 where pk = '1A9F96AE-54FA-40F9-9069-749F3ACF0CEF';"
+#$sql2 = "UPDATE table1 set someint = 1234 where pk = '89F21B61-891B-42CD-9BED-84BA4B7EB7D0';"
 
-$count = ($sql1,$sql2) | Invoke-SqlServerQuery -Database $db -CUD -Verbose -ExpectedRowCount 3
-Write-Host "Count $count."
+#$count = ($sql1,$sql2) | Invoke-SqlServerQuery -Database $db -Verbose
+#Write-Host "Count $count."
+
+$sql = "select * from table1 where somestring = ' update insert delete UPDATE INSERT DELETE ';"
+$result = $sql | Invoke-SqlServerQuery -Database $db -Verbose
+$result | ft
 
 #$query = "select * from sometable;"
 #$query | Invoke-SqlServerQuery -Database "test" -Verbose

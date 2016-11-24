@@ -5,6 +5,7 @@ using System.Data.Common;
 using System.Diagnostics;
 using System.Management.Automation;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace InvokeQuery
 {
@@ -205,23 +206,31 @@ namespace InvokeQuery
 
         private void RunQuery()
         {
-            if (ShouldProcess("Database server", "Run Query:`" + SqlQuery.Sql + "`"))
+            var regexPattern = @"(?<=^([^']|'[^']*')*)(update |insert |delete |merge )";
+            var uhOh = Regex.Match(SqlQuery.Sql.ToLower(), regexPattern, RegexOptions.Multiline | RegexOptions.IgnoreCase).Success;
+            var cudWarning = "WARNING! The following query appears to contain an INSERT/UPDATE/DELETE/MERGE operation, but the CUD switch was not used (which is recommended). Are you sure you want to execute this query?";
+
+            if (uhOh && !ShouldContinue(SqlQuery.Sql, cudWarning))
             {
-                var command = GetDbCommand();
-                var dataTable = new DataTable();
-                var adapter = ProviderFactory.CreateDataAdapter();
-                adapter.SelectCommand = command;
-                using (adapter)
-                {
-                    adapter.Fill(dataTable);
-                }
-                WriteVerbose("Query returned " + dataTable.Rows.Count + " rows.");
-                WriteObject(GetDataRowArrayFromTable(dataTable));
+                WriteWarning("Not running query!");
+                return;
             }
-            else
+            if (!ShouldProcess("Database server", "Run Query:`" + SqlQuery.Sql + "`"))
             {
-                WriteObject(new DataTable[0]);
+                WriteWarning("Not running query!");
+                return;
             }
+
+            var command = GetDbCommand();
+            var dataTable = new DataTable();
+            var adapter = ProviderFactory.CreateDataAdapter();
+            adapter.SelectCommand = command;
+            using (adapter)
+            {
+                adapter.Fill(dataTable);
+            }
+            WriteVerbose("Query returned " + dataTable.Rows.Count + " rows.");
+            WriteObject(GetDataRowArrayFromTable(dataTable));
         }
 
         private DataRow[] GetDataRowArrayFromTable(DataTable dataTable)
