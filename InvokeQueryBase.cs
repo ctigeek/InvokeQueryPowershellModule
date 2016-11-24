@@ -70,6 +70,7 @@ namespace InvokeQuery
         protected DbTransaction Transaction { get; private set; }
         private Stopwatch stopwatch { get; set; }
         private PSTransactionContext TransactionContext { get; set; }
+        private int actualRowCount { get; set; }
 
         protected override void BeginProcessing()
         {
@@ -98,6 +99,7 @@ namespace InvokeQuery
             Connection = GetDbConnection();
             EnlistAmbiantTransaction();
             WriteVerbose("Connection to database is open.");
+            actualRowCount = 0;
         }
 
         protected abstract DbProviderFactory GetProviderFactory();
@@ -128,7 +130,7 @@ namespace InvokeQuery
             {
                 if (SqlQuery == null)
                 {
-                    SqlQuery = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, StoredProcedure, ExpectedRowCount);
+                    SqlQuery = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, StoredProcedure, -1);
                 }
 
                 QueryNumber++;
@@ -238,16 +240,13 @@ namespace InvokeQuery
             {
                 var command = GetDbCommand();
                 var result = command.ExecuteNonQuery();
+
                 if (SqlQuery.ExpectedRowCount >= 0 && result != SqlQuery.ExpectedRowCount)
                 {
                     throw new PSInvalidOperationException("The ExpectedRowCount is " + SqlQuery.ExpectedRowCount + ", but this query had a row count of " + result + " rows. Rolling back the transaction.");
                 }
                 WriteVerbose("CUD query complete. " + result + " rows affected.");
-                WriteObject(result);
-            }
-            else
-            {
-                WriteObject(0);
+                actualRowCount += result;
             }
         }
 
@@ -292,13 +291,15 @@ namespace InvokeQuery
 
         protected override void StopProcessing()
         {
+            var rollback = CUD && ExpectedRowCount >= 0 && actualRowCount != ExpectedRowCount;
             if (ProgressRecord.RecordType != ProgressRecordType.Completed)
             {
                 ProgressRecord.RecordType = ProgressRecordType.Completed;
                 ProgressRecord.CurrentOperation = "Closing connection...";
                 WriteProgress(ProgressRecord);
             }
-            CloseTransaction(true);
+
+            CloseTransaction(rollback);
             CloseConnection();
             if (stopwatch != null)
             {
@@ -306,10 +307,18 @@ namespace InvokeQuery
                 WriteVerbose("Processed " + QueryNumber + " queries in " + stopwatch.ElapsedMilliseconds + " milliseconds.");
                 stopwatch = null;
                 WriteVerbose("Complete.");
+                if (rollback)
+                {
+                    throw new PSInvalidOperationException("The ExpectedRowCount is " + ExpectedRowCount + ", but this query had a row count of " + actualRowCount + " rows. Rolling back the transaction.");
+                }
+                if (CUD)
+                {
+                    WriteObject(actualRowCount);
+                }
             }
         }
 
-        private void CloseTransaction(bool commit)
+        private void CloseTransaction(bool rollback)
         {
             if (TransactionContext != null)
             {
@@ -318,7 +327,7 @@ namespace InvokeQuery
             }
             if (Transaction != null)
             {
-                if (commit)
+                if (!rollback)
                 {
                     WriteVerbose("Committing transaction.");
                     Transaction.Commit();
