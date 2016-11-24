@@ -206,7 +206,7 @@ namespace InvokeQuery
 
         private void RunQuery()
         {
-            var regexPattern = @"(?<=^([^']|'[^']*')*)(update|insert|delete|merge)";
+            var regexPattern = @"(?<=^([^']|'[^']*')*)(update |insert |delete |merge )";
             var uhOh = Regex.Match(SqlQuery.Sql.ToLower(), regexPattern, RegexOptions.Multiline | RegexOptions.IgnoreCase).Success;
             var cudWarning = "WARNING! The following query appears to contain an INSERT/UPDATE/DELETE/MERGE operation, but the CUD switch was not used (which is recommended). Are you sure you want to execute this query?";
 
