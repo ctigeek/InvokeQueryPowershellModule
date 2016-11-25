@@ -6,7 +6,7 @@ namespace InvokeQuery
 {
     public class SqlQuery : PSObject
     {
-        public SqlQuery(string sql, int commandTimeout, bool cud, Hashtable parameters, bool storedProcedure, int expectedRowCount)
+        public SqlQuery(string sql, int commandTimeout, bool cud, Hashtable parameters, bool storedProcedure, int expectedRowCount, ScriptBlock callback)
         {
             this.Properties.Add(new PSNoteProperty("Sql", sql));
             this.Properties.Add(new PSNoteProperty("CommandTimeout", commandTimeout));
@@ -14,6 +14,10 @@ namespace InvokeQuery
             this.Properties.Add(new PSNoteProperty("Parameters", parameters));
             this.Properties.Add(new PSNoteProperty("StoredProcedure", storedProcedure));
             this.Properties.Add(new PSNoteProperty("ExpectedRowCount", expectedRowCount));
+            if (callback != null)
+            {
+                this.Properties.Add(new PSScriptProperty("Callback", callback));
+            }
         }
 
         public string Sql
@@ -44,6 +48,11 @@ namespace InvokeQuery
         public int ExpectedRowCount
         {
             get { return (int) this.Properties["ExpectedRowCount"].Value; }
+        }
+
+        public ScriptBlock Callback
+        {
+            get { return (ScriptBlock) this.Properties["Callback"].Value; }
         }
     }
 }

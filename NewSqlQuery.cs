@@ -25,6 +25,9 @@ namespace InvokeQuery
         [Parameter]
         public int ExpectedRowCount { get; set; } = -1;
 
+        [Parameter]
+        public ScriptBlock Callback { get; set; }
+
         protected override void BeginProcessing()
         {
             if (ExpectedRowCount >= 0 && !CUD)
@@ -36,7 +39,7 @@ namespace InvokeQuery
 
         protected override void ProcessRecord()
         {
-            var query = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, StoredProcedure, ExpectedRowCount);
+            var query = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, StoredProcedure, ExpectedRowCount, Callback);
             WriteObject(query);
         }
     }

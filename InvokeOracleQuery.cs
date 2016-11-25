@@ -16,7 +16,7 @@ namespace InvokeQuery
             }
             catch (Exception ex)
             {
-                WriteVerbose("What exception will this throw if the Oracle DLLs aren't loaded?");
+                WriteVerbose("What exception will this throw if the Oracle DLLs aren't loaded? " + ex.ToString());
                 throw;
             }
         }
