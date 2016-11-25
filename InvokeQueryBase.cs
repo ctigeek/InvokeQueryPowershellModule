@@ -64,6 +64,9 @@ namespace InvokeQuery
         [Parameter(ParameterSetName = "Default")]
         public int ExpectedRowCount { get; set; } = -1;
 
+        [Parameter(ParameterSetName = "Default")]
+        public ScriptBlock Callback { get; set; }
+
         protected DbProviderFactory ProviderFactory { get; set; }
         protected DbConnection Connection { get; private set; }
         protected int QueryNumber { get; set; }
@@ -131,7 +134,7 @@ namespace InvokeQuery
             {
                 if (SqlQuery == null)
                 {
-                    SqlQuery = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, StoredProcedure, -1);
+                    SqlQuery = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, StoredProcedure, -1, Callback);
                 }
 
                 QueryNumber++;
@@ -230,7 +233,9 @@ namespace InvokeQuery
                 adapter.Fill(dataTable);
             }
             WriteVerbose("Query returned " + dataTable.Rows.Count + " rows.");
-            WriteObject(GetDataRowArrayFromTable(dataTable));
+            var outputData = GetDataRowArrayFromTable(dataTable);
+            ExecuteCallBackData(SqlQuery, outputData);
+            WriteObject(outputData);
         }
 
         private DataRow[] GetDataRowArrayFromTable(DataTable dataTable)
@@ -245,40 +250,43 @@ namespace InvokeQuery
 
         private void RunNonQuery()
         {
-            if (ShouldProcess("Database server", "Run CUD Query:`" + SqlQuery.Sql + "`"))
+            if (!ShouldProcess("Database server", "Run CUD Query:`" + SqlQuery.Sql + "`"))
             {
-                var command = GetDbCommand();
-                var result = command.ExecuteNonQuery();
-
-                if (SqlQuery.ExpectedRowCount >= 0 && result != SqlQuery.ExpectedRowCount)
-                {
-                    throw new PSInvalidOperationException("The ExpectedRowCount is " + SqlQuery.ExpectedRowCount + ", but this query had a row count of " + result + " rows. Rolling back the transaction.");
-                }
-                WriteVerbose("CUD query complete. " + result + " rows affected.");
-                actualRowCount += result;
+                WriteWarning("Not running query!");
+                return;
             }
+            var command = GetDbCommand();
+            var result = command.ExecuteNonQuery();
+
+            if (SqlQuery.ExpectedRowCount >= 0 && result != SqlQuery.ExpectedRowCount)
+            {
+                throw new PSInvalidOperationException("The ExpectedRowCount is " + SqlQuery.ExpectedRowCount + ", but this query had a row count of " + result + " rows. Rolling back the transaction.");
+            }
+            WriteVerbose("CUD query complete. " + result + " rows affected.");
+            ExecuteCallBackRowcount(SqlQuery, result);
+            actualRowCount += result;
         }
 
         private void RunScalarQuery()
         {
-            if (ShouldProcess("Database server", "Run Scalar Query: `" + SqlQuery.Sql + "`"))
+            if (!ShouldProcess("Database server", "Run Scalar Query: `" + SqlQuery.Sql + "`"))
             {
-                var command = GetDbCommand();
-                var result = command.ExecuteScalar();
-                if (result != null)
-                {
-                    WriteVerbose("Scalar Query complete. Retrieved result:" + result.ToString());
-                }
-                else
-                {
-                    WriteVerbose("Scalar Query complete. Nothing was returned.");
-                }
-                WriteObject(result);
+                WriteWarning("Not running query!");
+                return;
+            }
+
+            var command = GetDbCommand();
+            var result = command.ExecuteScalar();
+            if (result != null)
+            {
+                WriteVerbose("Scalar Query complete. Retrieved result:" + result.ToString());
             }
             else
             {
-                WriteObject(0);
+                WriteVerbose("Scalar Query complete. Nothing was returned.");
             }
+            ExecuteCallBackSingleObject(SqlQuery, result);
+            WriteObject(result);
         }
 
         private void EnlistAmbiantTransaction()
@@ -389,6 +397,21 @@ namespace InvokeQuery
                 connString.AppendFormat("Connection Timeout={0};", ConnectionTimeout);
             }
             ConnectionString = connString.ToString();
+        }
+
+        protected virtual void ExecuteCallBackData(SqlQuery sqlQuery, DataRow[] data)
+        {
+            Callback?.Invoke(sqlQuery, data);
+        }
+
+        protected virtual void ExecuteCallBackRowcount(SqlQuery sqlQuery, int rowcount)
+        {
+            Callback?.Invoke(sqlQuery, rowcount);
+        }
+
+        protected virtual void ExecuteCallBackSingleObject(SqlQuery sqlQuery, object data)
+        {
+            Callback?.Invoke(sqlQuery, data);
         }
 
         private string ScrubConnectionString(string connectionString)
