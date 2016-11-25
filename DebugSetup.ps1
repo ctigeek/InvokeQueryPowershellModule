@@ -13,6 +13,7 @@ $callback = {
 	param ($sqlQuery, $input)
 	Write-Host $sqlQuery.Sql
 	Write-Host "blahb lah blah $input."
+	throw "AAAAAAHHHHHHHHHHHGGGGGGGGGGGG!!!!!!!!!!!!!"
 }
 
 $count = ($sql1,$sql2) | Invoke-SqlServerQuery -Callback $callback -Database $db -Verbose -CUD

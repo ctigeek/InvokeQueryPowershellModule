@@ -158,7 +158,7 @@ namespace InvokeQuery
             }
             catch
             {
-                CloseTransaction(false);
+                CloseTransaction(true);
                 StopProcessing();
                 throw;
             }
