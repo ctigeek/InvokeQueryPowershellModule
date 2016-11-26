@@ -23,6 +23,9 @@ namespace InvokeQuery
         public SwitchParameter StoredProcedure { get; set; }
 
         [Parameter]
+        public SwitchParameter Scalar { get; set; }
+
+        [Parameter]
         public int ExpectedRowCount { get; set; } = -1;
 
         [Parameter]
@@ -39,7 +42,7 @@ namespace InvokeQuery
 
         protected override void ProcessRecord()
         {
-            var query = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, StoredProcedure, ExpectedRowCount, Callback);
+            var query = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, Scalar, StoredProcedure, ExpectedRowCount, Callback);
             WriteObject(query);
         }
     }
