@@ -13,10 +13,14 @@ $callback = {
 	param ($sqlQuery, $input)
 	Write-Host $sqlQuery.Sql
 	Write-Host "blahb lah blah $input."
-	throw "AAAAAAHHHHHHHHHHHGGGGGGGGGGGG!!!!!!!!!!!!!"
+	##throw "AAAAAAHHHHHHHHHHHGGGGGGGGGGGG!!!!!!!!!!!!!"
 }
 
-$count = ($sql1,$sql2) | Invoke-SqlServerQuery -Callback $callback -Database $db -Verbose -CUD
+$q1 = New-SqlQuery -Sql $sql1 -Callback $callback -CUD
+$q2 = New-SqlQuery -Sql $sql2 -Callback $callback -CUD
+
+$count = ($q1, $q2) | Invoke-SqlServerQuery -Database $db -Verbose
+
 Write-Host "Count $count."
 
 #$sql = "select * from table1 where somestring = ' update insert delete UPDATE INSERT DELETE ';"

@@ -13,7 +13,7 @@ Currently supported database types:
 It's trivial to add a new db type as long as it has an ADO.NET provider. Please submit a pull request or open an issue if you have one you'd like to add.
 
 ### Why not use Invoke-Sqlcmd??
-Invoke Sqlcmd is a wrapper for Sqlcmd:
+Invoke-Sqlcmd is just a wrapper for Sql Server's command-line executable, Sqlcmd.exe:
 ```
 PS C:\windows\system32> Invoke-Sqlcmd
 
@@ -24,12 +24,12 @@ The Cmdlets in the InvokeQuery module are all built on ADO.NET, and therefore wo
 We also have functionality that's not possible using Sqlcmd, like scalar queries, returning the number of rows affected in a CUD operation, and ...oh yeah... **transactions!** It's also trivial to make the same codebase work with any DB type that has an ADO.NET provider.
 
 ### How to install:
-If you have powershell v5 you can install directly from [Powershell Gallery.](https://www.powershellgallery.com/packages/InvokeQuery/0.9.1)
+If you have powershell v5 you can install directly from the [Powershell Gallery.](https://www.powershellgallery.com/packages/InvokeQuery)
 ```
 Install-Module -Name InvokeQuery
 ```
 
-If you are on pre-v5 powershell, [download the latest release](https://github.com/ctigeek/InvokeQueryPowershellModule/releases) and unzip to `C:\Windows\System32\WindowsPowerShell\v1.0\Modules`.
+If you are on pre-v5 powershell, [download the latest release](https://github.com/ctigeek/InvokeQueryPowershellModule/releases) and unzip to `C:\Windows\System32\WindowsPowerShell\v1.0\Modules\InvokeQuery`.
 
 
 ### Usage:
@@ -68,7 +68,7 @@ d749777e-bdf0-43e1-901d-6874785e4c71     321 yo yo yo       5/1/2016 8:58:02 AM
 0867b9cd-712e-4181-b739-b2f16cff520c     123 blah blah blah 5/1/2016 8:58:02 AM
 
 ```
-As you can see, making queries is incredibly easy. Once you have the results, you can mainpulate it in powershell like any other object.  Because we are connecting to a local database using windows authentication, we don't need to specify additional parameters; the `Server` property defaults to localhost, and the `Credential` property defaults to windows authentication.  If you use the `Verbose` switch you can see all this happening:
+As you can see, making queries is incredibly easy. Once you have the results, you can mainpulate it in powershell like any other object.  Because we are connecting to a local database using windows authentication, we don't need to specify additional parameters; the `Server` property defaults to `localhost`, and the `Credential` property defaults to windows authentication.  If you use the `Verbose` switch you can see all this happening:
 ```
 PS C:\windows\system32> $results = $sql | Invoke-SqlServerQuery -Database $db -Verbose
 VERBOSE: Server set to localhost
@@ -82,9 +82,9 @@ VERBOSE: Query returned 3 rows.
 VERBOSE: Complete...
 VERBOSE: Processed 1 queries in 11 milliseconds.
 ```
-Not only did it state that it was using "localhost", but it gives you the full connection string it will use to connect to the database.  You can actually pass in the full connection string using the `ConnectionString` parameter if you need to use special db properties.  You may also notice that this time we piped in the `$sql` variable instead of passing it as a parameter. We'll see how to make good use of that feature in a bit.
+Not only did it state that it was using `localhost`, but it gives you the full connection string it will use to connect to the database.  You can actually pass in a full connection string using the `ConnectionString` parameter if you need to use special db properties.  You may also notice that this time we piped in the `$sql` variable instead of passing it as a parameter. We'll see how to make good use of that feature in a bit.
 
-#### Scalar queries
+### Scalar queries
 Need a single value? No problem. Use the `Scalar` switch. It will return a single value.
 ```
 PS C:\windows\system32> $db = "test"
@@ -93,7 +93,7 @@ PS C:\windows\system32> $somestring = $sql | Invoke-SqlServerQuery -Database $db
 PS C:\windows\system32> $somestring
 yo yo yo
 ```
-#### CUD Operations
+### CUD Operations
 Performing Create/Update/Delete operations is really where things get fun, and InvokeQuery has some wonderful features to make your life easy. A simple example:
 ```
 PS C:\windows\system32> $db = "test"
@@ -103,11 +103,15 @@ PS C:\windows\system32> $rowcount = $sql | Invoke-SqlServerQuery -Database $db -
 PS C:\windows\system32> $rowcount
 1
 ```
-All we did was add the `CUD` switch. That tells the module to execute a "non-query" operation, i.e. this is a query that will not return data. When you use the CUD switch, it returns the number of rows created/updated/deleted.
+All we did was add the `CUD` switch. That tells the module to execute a "non-query" operation, i.e. this is a query that will not return data. When you use the CUD switch, it returns the number of rows created/updated/deleted. 
 
-_Sidebar: this actually breaks a tenant that a cmdlet should behave consistently. i.e. if we are querying data, it returns data, but with the `CUD` switch, it's actually returning meta-data: e.g. row count. If this offends you, sorry. The alternative is to create a whole new cmdlet just for CUD operations (e.g. Invoke-SqlServerCUD) and I think that's going overboard._
+_Sidebar 1: this actually breaks a tenant that a cmdlet should behave consistently. i.e. if we are querying data, it returns data, but with the `CUD` switch, it's actually returning meta-data: e.g. row count. If this offends you, sorry. The alternative is to create a whole new cmdlet just for CUD operations (e.g. Invoke-SqlServerCUD) and I think that's going overboard._
 
-That's all very simple, but we are using string concatenation to insert the guid into the sql statement. Let's look at a more problematic example:
+_Sidebar 2: If you run a SQL operation with `CREATE`, `UPDATE`, or `DELETE`, but do not include the `CUD` switch, you'll be prompted to confirm the operation. The only way to avoid the nag confirmation is to use the `CUD` switch._
+
+### Parameters
+
+Okay, so that's all very simple, but we are using string concatenation to insert the guid into the sql statement. Let's look at a more problematic example:
 ```
 PS C:\windows\system32> $guid = New-Guid
 PS C:\windows\system32> $somestring = "It's great to see you!"
@@ -137,7 +141,7 @@ PS C:\windows\system32> $sql | Invoke-SqlServerQuery -Database $db -Parameters $
 It's great to see you!
 ```
 
-#### Transactions
+### Transactions
 There are two ways to utilize transactions with this module:
 1. Explicitly creating one via `Start-Transaction`, and then using the `UseTransaction` switch on the cmdlet.
 2. Piping in multiple queries and letting the cmdlet create a transaction for you.
@@ -325,6 +329,42 @@ So it's not creating a transaction. It's using the existing one.
 Any error that's thrown prior to the `Complete-Transaction` will cause the transaction to rollback.
 
 **Note**: if you run this code, you will notice a significant delay when the second cmdlet is executed. This is due to the transaction being moved from Sql Server to the Microsoft Distributed Transaction Coordinator service. Subsequent calls to the cmdlet should not have such a delay.
+
+### Callback parameter
+The callback parameter allows you to run code between queries, even when they're part of a transaction. There are two good use-cases for callback: retrieving identity and other values generated by the database server, and complex validation processes that may require rolling back a transaction.
+For this example, we'll be using a table with identity:
+```
+use test
+GO
+CREATE TABLE [dbo].[table2](
+	[pk] [bigint] IDENTITY(1,1) NOT NULL,
+	[someint] [bigint] NOT NULL,
+	[somestring] [varchar](5000) NOT NULL,
+	[somedatetime] [datetime2](7) NOT NULL,
+ CONSTRAINT [PK_table2] PRIMARY KEY CLUSTERED ([pk] ASC)
+)
+GO
+```
+
+This code will insert three rows, and put the resulting identity values into an array:
+
+```
+$db = "test"
+$pks = {}.Invoke();
+$callback = {
+   param($sqlquery, $result)
+   $pks.Add($result.pk)
+}
+
+5..8 | %{ 
+    $sql = "insert into table2 (someint, somestring, somedatetime) values ($_, 'blah blah blah', GETDATE())"
+    New-SqlQuery -Sql $sql -CUD
+    New-SqlQuery -Sql "select @@IDENTITY as pk" -Callback $callback
+} | Invoke-SqlServerQuery -Database $db
+
+```
+So all callbacks are passed two parameters: The `SqlQuery` object that was executed and the result of the query. If it's a CUD query, then result is the row count, otherwise it's the data returned from the query.
+
 
 ## Options for all Invoke-*Query cmdlets:
 

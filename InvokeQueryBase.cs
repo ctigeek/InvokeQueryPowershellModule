@@ -11,6 +11,9 @@ namespace InvokeQuery
 {
     public abstract class InvokeQueryBase : PSCmdlet, IDisposable
     {
+        private const string DefaultParameterSet = "Default";
+        private const string SqlQueryParameterSet = "SqlQuery";
+
         protected InvokeQueryBase()
         {
             ConnectionTimeout = -1;
@@ -21,32 +24,32 @@ namespace InvokeQuery
             ProgressRecord.RecordType = ProgressRecordType.Processing;
         }
         
-        [Parameter(ParameterSetName = "SqlQuery", Mandatory = true, ValueFromPipeline = true, HelpMessage = "Use New-SqlQuery to create a SqlQuery object.")]
+        [Parameter(ParameterSetName = SqlQueryParameterSet, Mandatory = true, ValueFromPipeline = true, HelpMessage = "Use New-SqlQuery to create a SqlQuery object.")]
         public SqlQuery SqlQuery { get; set; }
 
-        [Parameter(ParameterSetName = "Default", Mandatory = true, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
+        [Parameter(ParameterSetName = DefaultParameterSet, Mandatory = true, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
         public string Sql { get; set; }
 
-        [Parameter(ParameterSetName = "Default")]
+        [Parameter(ParameterSetName = DefaultParameterSet)]
         public Hashtable Parameters { get; set; }
 
         [Parameter]
         [Credential]
         public PSCredential Credential { get; set; }
 
-        [Parameter(ParameterSetName = "Default")]
+        [Parameter(ParameterSetName = DefaultParameterSet)]
         public int CommandTimeout { get; set; }
 
         [Parameter]
         public int ConnectionTimeout { get; set; }
 
-        [Parameter(ParameterSetName = "Default")]
+        [Parameter(ParameterSetName = DefaultParameterSet)]
         public SwitchParameter Scalar { get; set; }
 
-        [Parameter(ParameterSetName = "Default")]
+        [Parameter(ParameterSetName = DefaultParameterSet)]
         public SwitchParameter CUD { get; set; }
 
-        [Parameter(ParameterSetName = "Default")]
+        [Parameter(ParameterSetName = DefaultParameterSet)]
         public SwitchParameter StoredProcedure { get; set; }
 
         [Parameter]
@@ -61,10 +64,10 @@ namespace InvokeQuery
         [Parameter]
         public SwitchParameter NoTrans { get; set; }
 
-        [Parameter(ParameterSetName = "Default")]
+        [Parameter(ParameterSetName = DefaultParameterSet)]
         public int ExpectedRowCount { get; set; } = -1;
 
-        [Parameter(ParameterSetName = "Default")]
+        [Parameter(ParameterSetName = DefaultParameterSet)]
         public ScriptBlock Callback { get; set; }
 
         protected DbProviderFactory ProviderFactory { get; set; }
@@ -83,7 +86,7 @@ namespace InvokeQuery
                 throw new PSArgumentException("You can only specify an expected number of rows for a CUD operation. Did you forget the CUD switch?");
             }
 
-            if (SqlQuery == null &&  CUD && Scalar)
+            if (SqlQuery == null && CUD && Scalar)
             {
                 throw new PSArgumentException("You cannot use both the CUD and the Scalar switches at the same time.");
             }
@@ -132,9 +135,9 @@ namespace InvokeQuery
         {
             try
             {
-                if (SqlQuery == null)
-                {
-                    SqlQuery = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, StoredProcedure, -1, Callback);
+                if (ParameterSetName == DefaultParameterSet)
+                { 
+                    SqlQuery = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, Scalar, StoredProcedure, -1, Callback);
                 }
 
                 QueryNumber++;
@@ -143,7 +146,7 @@ namespace InvokeQuery
                 WriteVerbose("Running query number " + QueryNumber.ToString());
                 WriteVerbose("Running the following query: " + SqlQuery.Sql);
 
-                if (Scalar)
+                if (SqlQuery.Scalar)
                 {
                     RunScalarQuery();
                 }
@@ -162,7 +165,6 @@ namespace InvokeQuery
                 StopProcessing();
                 throw;
             }
-            SqlQuery = null;
         }
 
         protected virtual DbCommand GetDbCommand()
@@ -234,7 +236,7 @@ namespace InvokeQuery
             }
             WriteVerbose("Query returned " + dataTable.Rows.Count + " rows.");
             var outputData = GetDataRowArrayFromTable(dataTable);
-            ExecuteCallBackData(SqlQuery, outputData);
+            ExecuteCallbackData(outputData);
             WriteObject(outputData);
         }
 
@@ -263,8 +265,9 @@ namespace InvokeQuery
                 throw new PSInvalidOperationException("The ExpectedRowCount is " + SqlQuery.ExpectedRowCount + ", but this query had a row count of " + result + " rows. Rolling back the transaction.");
             }
             WriteVerbose("CUD query complete. " + result + " rows affected.");
-            ExecuteCallBackRowcount(SqlQuery, result);
+            ExecuteCallbackRowcount(result);
             actualRowCount += result;
+            WriteObject(result);
         }
 
         private void RunScalarQuery()
@@ -285,7 +288,7 @@ namespace InvokeQuery
             {
                 WriteVerbose("Scalar Query complete. Nothing was returned.");
             }
-            ExecuteCallBackSingleObject(SqlQuery, result);
+            ExecuteCallbackSingleObject(result);
             WriteObject(result);
         }
 
@@ -308,7 +311,7 @@ namespace InvokeQuery
 
         protected override void StopProcessing()
         {
-            var rollback = CUD && ExpectedRowCount >= 0 && actualRowCount != ExpectedRowCount;
+            var rollback = ParameterSetName == DefaultParameterSet &&  CUD && ExpectedRowCount >= 0 && actualRowCount != ExpectedRowCount;
             if (ProgressRecord.RecordType != ProgressRecordType.Completed)
             {
                 ProgressRecord.RecordType = ProgressRecordType.Completed;
@@ -327,10 +330,6 @@ namespace InvokeQuery
                 if (rollback)
                 {
                     throw new PSInvalidOperationException("The ExpectedRowCount is " + ExpectedRowCount + ", but this query had a row count of " + actualRowCount + " rows. Rolling back the transaction.");
-                }
-                if (CUD)
-                {
-                    WriteObject(actualRowCount);
                 }
             }
         }
@@ -399,19 +398,24 @@ namespace InvokeQuery
             ConnectionString = connString.ToString();
         }
 
-        protected virtual void ExecuteCallBackData(SqlQuery sqlQuery, DataRow[] data)
+        protected virtual void ExecuteCallbackData(DataRow[] result)
         {
-            Callback?.Invoke(sqlQuery, data);
+            ExecuteCallback(result);
         }
 
-        protected virtual void ExecuteCallBackRowcount(SqlQuery sqlQuery, int rowcount)
+        protected virtual void ExecuteCallbackRowcount(int result)
         {
-            Callback?.Invoke(sqlQuery, rowcount);
+            ExecuteCallback(result);
         }
 
-        protected virtual void ExecuteCallBackSingleObject(SqlQuery sqlQuery, object data)
+        protected virtual void ExecuteCallbackSingleObject(object result)
         {
-            Callback?.Invoke(sqlQuery, data);
+            ExecuteCallback(result);
+        }
+
+        private void ExecuteCallback(object result)
+        {
+            SqlQuery.Callback?.Invoke(SqlQuery, result);
         }
 
         private string ScrubConnectionString(string connectionString)
