@@ -16,7 +16,7 @@ namespace InvokeQuery
 
         protected override void ConfigureServerProperty()
         {
-            if (string.IsNullOrEmpty(Server))
+            if (string.IsNullOrEmpty(ConnectionString) && string.IsNullOrEmpty(Server))
             {
                 var localInstanceName = FindLocalSqlInstance();
                 if (localInstanceName == null)
