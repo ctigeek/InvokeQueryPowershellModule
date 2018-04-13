@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Data.Common;
 using System.Data.SqlClient;
 using System.Management.Automation;
@@ -16,6 +16,8 @@ namespace InvokeQuery
 
         protected override void ConfigureServerProperty()
         {
+            if (!string.IsNullOrEmpty(ConnectionString)) return;
+
             if (string.IsNullOrEmpty(Server))
             {
                 var localInstanceName = FindLocalSqlInstance();
