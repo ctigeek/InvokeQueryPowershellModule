@@ -4,16 +4,14 @@ using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
 using System.Management.Automation;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
 namespace InvokeQuery
 {
-    public abstract class InvokeQueryBase : PSCmdlet, IDisposable
+    public abstract class InvokeQueryBase : PSCmdlet
     {
-        private const string DefaultParameterSet = "Default";
-        private const string SqlQueryParameterSet = "SqlQuery";
-
         protected InvokeQueryBase()
         {
             ConnectionTimeout = -1;
@@ -23,33 +21,44 @@ namespace InvokeQuery
             ProgressRecord = new ProgressRecord(1, "Running Queries...", "Running...");
             ProgressRecord.RecordType = ProgressRecordType.Processing;
         }
-        
-        [Parameter(ParameterSetName = SqlQueryParameterSet, Mandatory = true, ValueFromPipeline = true, HelpMessage = "Use New-SqlQuery to create a SqlQuery object.")]
-        public SqlQuery SqlQuery { get; set; }
 
-        [Parameter(ParameterSetName = DefaultParameterSet, Mandatory = true, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
+
+        private Stopwatch Stopwatch { get; set; }
+        private PSTransactionContext TransactionContext { get; set; }
+        private int ActualRowCount { get; set; }
+
+        protected readonly bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        protected DbProviderFactory ProviderFactory { get; set; }
+        protected DbConnection Connection { get; private set; }
+        protected int QueryNumber { get; set; }
+        protected ProgressRecord ProgressRecord { get; }
+        protected DbTransaction Transaction { get; private set; }
+
+        [Parameter(Mandatory = true, ValueFromPipeline = true)]
         public string Sql { get; set; }
 
-        [Parameter(ParameterSetName = DefaultParameterSet)]
+        [Parameter]
         public Hashtable Parameters { get; set; }
 
         [Parameter]
-        [Credential]
+        public string ConnectionString { get; set; }
+
+        [Parameter]
         public PSCredential Credential { get; set; }
 
-        [Parameter(ParameterSetName = DefaultParameterSet)]
+        [Parameter]
         public int CommandTimeout { get; set; }
 
         [Parameter]
         public int ConnectionTimeout { get; set; }
 
-        [Parameter(ParameterSetName = DefaultParameterSet)]
+        [Parameter]
         public SwitchParameter Scalar { get; set; }
 
-        [Parameter(ParameterSetName = DefaultParameterSet)]
-        public SwitchParameter CUD { get; set; }
+        [Parameter]
+        public SwitchParameter NonQuery { get; set; }
 
-        [Parameter(ParameterSetName = DefaultParameterSet)]
+        [Parameter]
         public SwitchParameter StoredProcedure { get; set; }
 
         [Parameter]
@@ -59,54 +68,40 @@ namespace InvokeQuery
         public string Server { get; set; }
 
         [Parameter]
-        public string ConnectionString { get; set; }
+        public SwitchParameter NoTrans { get; set; }  //Still need this??
 
         [Parameter]
-        public SwitchParameter NoTrans { get; set; }
-
-        [Parameter(ParameterSetName = DefaultParameterSet)]
         public int ExpectedRowCount { get; set; } = -1;
 
-        [Parameter(ParameterSetName = DefaultParameterSet)]
-        public ScriptBlock Callback { get; set; }
-
-        protected DbProviderFactory ProviderFactory { get; set; }
-        protected DbConnection Connection { get; private set; }
-        protected int QueryNumber { get; set; }
-        protected ProgressRecord ProgressRecord { get; private set; }
-        protected DbTransaction Transaction { get; private set; }
-        private Stopwatch stopwatch { get; set; }
-        private PSTransactionContext TransactionContext { get; set; }
-        private int actualRowCount { get; set; }
 
         protected override void BeginProcessing()
         {
-            if (SqlQuery == null && ExpectedRowCount >= 0 && !CUD)
+            if (ExpectedRowCount >= 0 && !NonQuery)
             {
-                throw new PSArgumentException("You can only specify an expected number of rows for a CUD operation. Did you forget the CUD switch?");
+                throw new PSArgumentException("You can only specify an expected number of rows for a NonQuery operation. Did you forget the NonQuery switch?");
             }
 
-            if (SqlQuery == null && CUD && Scalar)
+            if (NonQuery && Scalar)
             {
-                throw new PSArgumentException("You cannot use both the CUD and the Scalar switches at the same time.");
+                throw new PSArgumentException("You cannot use both the NonQuery and the Scalar switches at the same time.");
             }
 
             if (!string.IsNullOrEmpty(ConnectionString) && (!string.IsNullOrEmpty(Server) || !string.IsNullOrEmpty(Database) || ConnectionTimeout > 0))
             {
                 throw new PSArgumentException("If you specify a connection string, the Server, Database, and ConnectionTimeout parameter should not be used.");
             }
-            stopwatch = Stopwatch.StartNew();
+            Stopwatch = Stopwatch.StartNew();
             ConfigureServerProperty();
             ConfigureConnectionString();
             WriteVerbose("Using the following connection string: " + ScrubConnectionString(ConnectionString));
-            
+
             ProviderFactory = GetProviderFactory();
 
             WriteVerbose("Opening connection.");
             Connection = GetDbConnection();
             EnlistAmbiantTransaction();
             WriteVerbose("Connection to database is open.");
-            actualRowCount = 0;
+            ActualRowCount = 0;
         }
 
         protected abstract DbProviderFactory GetProviderFactory();
@@ -135,22 +130,17 @@ namespace InvokeQuery
         {
             try
             {
-                if (ParameterSetName == DefaultParameterSet)
-                { 
-                    SqlQuery = new SqlQuery(Sql, CommandTimeout, CUD, Parameters, Scalar, StoredProcedure, -1, Callback);
-                }
-
                 QueryNumber++;
-                ProgressRecord.CurrentOperation = "Running query number " + QueryNumber.ToString();
+                ProgressRecord.CurrentOperation = "Running query number " + QueryNumber;
                 WriteProgress(ProgressRecord);
-                WriteVerbose("Running query number " + QueryNumber.ToString());
-                WriteVerbose("Running the following query: " + SqlQuery.Sql);
+                WriteVerbose("Running query number " + QueryNumber);
+                WriteVerbose("Running the following query: " + Sql);
 
-                if (SqlQuery.Scalar)
+                if (Scalar)
                 {
                     RunScalarQuery();
                 }
-                else if (SqlQuery.CUD)
+                else if (NonQuery)
                 {
                     RunNonQuery();
                 }
@@ -171,20 +161,20 @@ namespace InvokeQuery
         {
             var command = ProviderFactory.CreateCommand();
             command.Connection = Connection;
-            command.CommandText = SqlQuery.Sql;
-            if (SqlQuery.CommandTimeout > 0)
+            command.CommandText = Sql;
+            if (CommandTimeout > 0)
             {
-                command.CommandTimeout = SqlQuery.CommandTimeout;
+                command.CommandTimeout = CommandTimeout;
             }
-            if (SqlQuery.StoredProcedure)
+            if (StoredProcedure)
             {
                 command.CommandType = CommandType.StoredProcedure;
             }
-            if (SqlQuery.Parameters != null)
+            if (Parameters != null && Parameters.Count > 0)
             {
-                foreach (var key in SqlQuery.Parameters.Keys)
+                foreach (var key in Parameters.Keys)
                 {
-                    var obj = SqlQuery.Parameters[key];
+                    var obj = Parameters[key];
                     var pso = obj as PSObject;
                     if (pso != null)
                     {
@@ -197,7 +187,7 @@ namespace InvokeQuery
                     WriteVerbose("Adding parameter " + param.ParameterName + "=" + param.Value.ToString());
                 }
             }
-            if (Transaction == null && SqlQuery.CUD && TransactionContext == null && !NoTrans)
+            if (Transaction == null && NonQuery && TransactionContext == null && !NoTrans)
             {
                 WriteVerbose("Starting transaction.");
                 Transaction = Connection.BeginTransaction();
@@ -211,16 +201,16 @@ namespace InvokeQuery
 
         private void RunQuery()
         {
-            var regexPattern = @"(?<=^([^']|'[^']*')*)(update |insert |delete |merge )";
-            var uhOh = Regex.Match(SqlQuery.Sql.ToLower(), regexPattern, RegexOptions.Multiline | RegexOptions.IgnoreCase).Success;
-            var cudWarning = "WARNING! The following query appears to contain an INSERT/UPDATE/DELETE/MERGE operation, but the CUD switch was not used (which is recommended). Are you sure you want to execute this query?";
+            //var regexPattern = @"(?<=^([^']|'[^']*')*)(update |insert |delete |merge )";
+            //var uhOh = Regex.Match(Sql.ToLower(), regexPattern, RegexOptions.Multiline | RegexOptions.IgnoreCase).Success;
+            //var cudWarning = "WARNING! The following query appears to contain an INSERT/UPDATE/DELETE/MERGE operation, but the NonQuery switch was not used (which is recommended). Are you sure you want to execute this query?";
 
-            if (uhOh && !ShouldContinue(SqlQuery.Sql, cudWarning))
-            {
-                WriteWarning("Not running query!");
-                return;
-            }
-            if (!ShouldProcess("Database server", "Run Query:`" + SqlQuery.Sql + "`"))
+            //if (uhOh && !ShouldContinue(Sql, cudWarning))
+            //{
+            //    WriteWarning("Not running query!");
+            //    return;
+            //}
+            if (!ShouldProcess("Database server", "Run Query:`" + Sql + "`"))
             {
                 WriteWarning("Not running query!");
                 return;
@@ -236,7 +226,6 @@ namespace InvokeQuery
             }
             WriteVerbose("Query returned " + dataTable.Rows.Count + " rows.");
             var outputData = GetDataRowArrayFromTable(dataTable);
-            ExecuteCallbackData(outputData);
             WriteObject(outputData);
         }
 
@@ -252,7 +241,7 @@ namespace InvokeQuery
 
         private void RunNonQuery()
         {
-            if (!ShouldProcess("Database server", "Run CUD Query:`" + SqlQuery.Sql + "`"))
+            if (!ShouldProcess("Database server", "Run NonQuery Query:`" + Sql + "`"))
             {
                 WriteWarning("Not running query!");
                 return;
@@ -260,19 +249,18 @@ namespace InvokeQuery
             var command = GetDbCommand();
             var result = command.ExecuteNonQuery();
 
-            if (SqlQuery.ExpectedRowCount >= 0 && result != SqlQuery.ExpectedRowCount)
+            if (ExpectedRowCount >= 0 && result != ExpectedRowCount)
             {
-                throw new PSInvalidOperationException("The ExpectedRowCount is " + SqlQuery.ExpectedRowCount + ", but this query had a row count of " + result + " rows. Rolling back the transaction.");
+                throw new PSInvalidOperationException("The ExpectedRowCount is " + ExpectedRowCount + ", but this query had a row count of " + result + " rows. Rolling back the transaction.");
             }
-            WriteVerbose("CUD query complete. " + result + " rows affected.");
-            ExecuteCallbackRowcount(result);
-            actualRowCount += result;
+            WriteVerbose("NonQuery query complete. " + result + " rows affected.");
+            ActualRowCount += result;
             WriteObject(result);
         }
 
         private void RunScalarQuery()
         {
-            if (!ShouldProcess("Database server", "Run Scalar Query: `" + SqlQuery.Sql + "`"))
+            if (!ShouldProcess("Database server", "Run Scalar Query: `" + Sql + "`"))
             {
                 WriteWarning("Not running query!");
                 return;
@@ -288,18 +276,17 @@ namespace InvokeQuery
             {
                 WriteVerbose("Scalar Query complete. Nothing was returned.");
             }
-            ExecuteCallbackSingleObject(result);
             WriteObject(result);
         }
 
         private void EnlistAmbiantTransaction()
         {
-            if (TransactionAvailable())
+            if (TransactionAvailable())  //for the indefinite future, this will always be false in PS Core
             {
                 WriteVerbose("Creating DB connection in established transaction scope.");
                 // Important! By simply fetching the CurrentPSTransaction parameter, it moves the powershell ambient transaction into the current transaction. Only then can we enlist the connection.
                 //https://blogs.msdn.microsoft.com/powershell/2008/05/08/powershell-transactions-quickstart/
-                TransactionContext = CurrentPSTransaction;
+                //TransactionContext = ???
                 Connection.EnlistTransaction(System.Transactions.Transaction.Current);
             }
         }
@@ -311,7 +298,7 @@ namespace InvokeQuery
 
         protected override void StopProcessing()
         {
-            var rollback = ParameterSetName == DefaultParameterSet &&  CUD && ExpectedRowCount >= 0 && actualRowCount != ExpectedRowCount;
+            var rollback = NonQuery && ExpectedRowCount >= 0 && ActualRowCount != ExpectedRowCount;
             if (ProgressRecord.RecordType != ProgressRecordType.Completed)
             {
                 ProgressRecord.RecordType = ProgressRecordType.Completed;
@@ -321,15 +308,15 @@ namespace InvokeQuery
 
             CloseTransaction(rollback);
             CloseConnection();
-            if (stopwatch != null)
+            if (Stopwatch != null)
             {
-                stopwatch.Stop();
-                WriteVerbose("Processed " + QueryNumber + " queries in " + stopwatch.ElapsedMilliseconds + " milliseconds.");
-                stopwatch = null;
+                Stopwatch.Stop();
+                WriteVerbose("Processed " + QueryNumber + " queries in " + Stopwatch.ElapsedMilliseconds + " milliseconds.");
+                Stopwatch = null;
                 WriteVerbose("Complete.");
                 if (rollback)
                 {
-                    throw new PSInvalidOperationException("The ExpectedRowCount is " + ExpectedRowCount + ", but this query had a row count of " + actualRowCount + " rows. Rolling back the transaction.");
+                    throw new PSInvalidOperationException("The ExpectedRowCount is " + ExpectedRowCount + ", but this query had a row count of " + ActualRowCount + " rows. Rolling back the transaction.");
                 }
             }
         }
@@ -398,26 +385,6 @@ namespace InvokeQuery
             ConnectionString = connString.ToString();
         }
 
-        protected virtual void ExecuteCallbackData(DataRow[] result)
-        {
-            ExecuteCallback(result);
-        }
-
-        protected virtual void ExecuteCallbackRowcount(int result)
-        {
-            ExecuteCallback(result);
-        }
-
-        protected virtual void ExecuteCallbackSingleObject(object result)
-        {
-            ExecuteCallback(result);
-        }
-
-        private void ExecuteCallback(object result)
-        {
-            SqlQuery.Callback?.Invoke(SqlQuery, result);
-        }
-
         private string ScrubConnectionString(string connectionString)
         {
             var index = connectionString.IndexOf("assword=");
@@ -438,12 +405,8 @@ namespace InvokeQuery
                         return connectionString.Replace(password, "xxxxxxxxxx");
                     }
                 }
-                return connectionString;
             }
-            else
-            {
-                return connectionString;
-            }
+            return connectionString;
         }
     }
 }

@@ -2,11 +2,10 @@
 using System.Data.Common;
 using System.Data.SqlClient;
 using System.Management.Automation;
-using Microsoft.Win32;
 
 namespace InvokeQuery
 {
-    [Cmdlet("Invoke","SqlServerQuery", SupportsTransactions = true, SupportsShouldProcess = true, ConfirmImpact = ConfirmImpact.Low)]
+    [Cmdlet("Invoke", "SqlServerQuery", SupportsTransactions = true, SupportsShouldProcess = true, ConfirmImpact = ConfirmImpact.Low)]
     public class InvokeSqlServerQuery : InvokeQueryBase
     {
         protected override DbProviderFactory GetProviderFactory()
@@ -19,10 +18,6 @@ namespace InvokeQuery
             if (string.IsNullOrEmpty(Server))
             {
                 var localInstanceName = FindLocalSqlInstance();
-                if (localInstanceName == null)
-                {
-                    throw new ArgumentNullException("Server","Server name not specified and no local instance of Sql Server was found.");
-                }
                 if (localInstanceName == string.Empty)
                 {
                     Server = "localhost";
@@ -46,26 +41,35 @@ namespace InvokeQuery
 
         private string FindLocalSqlInstance()
         {
-            string localInstanceName = null;
-            var key = GetRegistryKey("SOFTWARE\\Microsoft\\Microsoft SQL Server\\Instance Names\\SQL");
-            using (key)
+            string localInstanceName = string.Empty;
+            try
             {
-                if (key.ValueCount > 0)
+                if (IsWindows)
                 {
-                    localInstanceName = key.GetValueNames()[0];
-                    if (localInstanceName.ToLower() == "default" || localInstanceName.ToLower() == "mssqlserver") localInstanceName = string.Empty;
+                    var key = GetRegistryKey("SOFTWARE\\Microsoft\\Microsoft SQL Server\\Instance Names\\SQL");
+                    using (key)
+                    {
+                        if (key.ValueCount > 0)
+                        {
+                            localInstanceName = key.GetValueNames()[0];
+                            if (localInstanceName.ToLower() == "default" || localInstanceName.ToLower() == "mssqlserver") localInstanceName = string.Empty;
+                        }
+                    }
                 }
+            }
+            catch
+            {
             }
             return localInstanceName;
         }
 
-        private static RegistryKey GetRegistryKey(string keyPath)
+        private static Microsoft.Win32.RegistryKey GetRegistryKey(string keyPath)
         {
-            RegistryKey localMachineRegistry
-                = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine,
+            var localMachineRegistry
+                = Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine,
                                           Environment.Is64BitOperatingSystem
-                                              ? RegistryView.Registry64
-                                              : RegistryView.Registry32);
+                                              ? Microsoft.Win32.RegistryView.Registry64
+                                              : Microsoft.Win32.RegistryView.Registry32);
 
             return string.IsNullOrEmpty(keyPath)
                 ? localMachineRegistry

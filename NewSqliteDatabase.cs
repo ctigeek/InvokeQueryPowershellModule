@@ -12,7 +12,7 @@ namespace InvokeQuery
             using (var connection = new SQLiteConnection("Data Source="+FileName))
             {
                 connection.Open();
-                var query = "create table test1 (column1 int not null);";
+                var query = "create table temp(i int); drop table temp;";
                 using (var command = new SQLiteCommand(query, connection))
                 {
                     command.ExecuteNonQuery();

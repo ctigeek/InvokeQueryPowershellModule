@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "InvokeQuery": {
+      "commandName": "Executable",
+      "executablePath": "pwsh.exe"
+    }
+  }
+}
