@@ -50,6 +50,12 @@ insert into table1 values (NEWID(), 123, 'blah blah blah', GETDATE())
 insert into table1 values (NEWID(), 321, 'yo yo yo', GETDATE())
 insert into table1 values (NEWID(), 213, 'hey hey hey', GETDATE())
 ```
+### Connect Datase
+
+PS C:\windows\system32> $db = "test"
+| Invoke-MySqlQuery -ConnectionString "Server=localhost;Uid=root;Pwd=pwdatabase;database=namedatabase;" 
+
+```
 ### Querying Data
 
 Let's see how to do a simple query and then discuss:
