@@ -16,7 +16,7 @@ namespace InvokeQuery
 
         protected override void ConfigureServerProperty()
         {
-            if (string.IsNullOrEmpty(Server))
+            if (string.IsNullOrEmpty(ConnectionString) && string.IsNullOrEmpty(Server))
             {
                 var localInstanceName = FindLocalSqlInstance();
                 if (localInstanceName == null)
@@ -50,7 +50,7 @@ namespace InvokeQuery
             var key = GetRegistryKey("SOFTWARE\\Microsoft\\Microsoft SQL Server\\Instance Names\\SQL");
             using (key)
             {
-                if (key.ValueCount > 0)
+                if (key != null && key.ValueCount > 0)
                 {
                     localInstanceName = key.GetValueNames()[0];
                     if (localInstanceName.ToLower() == "default" || localInstanceName.ToLower() == "mssqlserver") localInstanceName = string.Empty;
