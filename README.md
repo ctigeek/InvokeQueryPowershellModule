@@ -4,6 +4,7 @@
 Currently supported database types:
 * Sql Server
 * MySql
+* ODBC
 * PostgreSql
 * Sql Server CE
 * SqLite
